@@ -41,8 +41,16 @@ export default function RootLayout() {
           >
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen
-              name="members/[id]"
+              name="members/[id]/index"
               options={{ title: "メンバー詳細" }}
+            />
+            <Stack.Screen
+              name="members/[id]/edit"
+              options={{ title: "メンバー編集" }}
+            />
+            <Stack.Screen
+              name="accounting/[month]"
+              options={{ title: "会計表" }}
             />
           </Stack>
         </SQLiteProvider>

@@ -1,10 +1,26 @@
 const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"] as const;
 
+function weekdayOf(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  return WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+}
+
 /** Formats a "YYYY-MM-DD" string as "2026/08/24(月)" without relying on Intl. */
 export function formatDate(iso: string): string {
-  const [y, m, d] = iso.split("-").map(Number);
-  const weekday = WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
-  return `${y}/${String(m).padStart(2, "0")}/${String(d).padStart(2, "0")}(${weekday})`;
+  const [y, m, d] = iso.split("-");
+  return `${y}/${m}/${d}(${weekdayOf(iso)})`;
+}
+
+/** Formats a "YYYY-MM-DD" string as the shorter "08/24(月)", for table columns. */
+export function formatShortDate(iso: string): string {
+  const [, m, d] = iso.split("-");
+  return `${m}/${d}(${weekdayOf(iso)})`;
+}
+
+/** Formats a "YYYY-MM" string as "2026年08月". */
+export function formatMonthLabel(month: string): string {
+  const [y, m] = month.split("-");
+  return `${y}年${m}月`;
 }
 
 /** Formats an integer amount as "¥5,000" without relying on Intl. */
@@ -17,4 +33,17 @@ export function formatYen(amount: number): string {
 
 export function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+export function currentMonthIso(): string {
+  return new Date().toISOString().slice(0, 7);
+}
+
+/** Shifts a "YYYY-MM" string by `delta` months (can be negative). */
+export function shiftMonth(month: string, delta: number): string {
+  const [y, m] = month.split("-").map(Number);
+  const total = y * 12 + (m - 1) + delta;
+  const newYear = Math.floor(total / 12);
+  const newMonth = (total % 12) + 1;
+  return `${newYear}-${String(newMonth).padStart(2, "0")}`;
 }

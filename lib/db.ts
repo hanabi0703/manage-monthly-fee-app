@@ -27,6 +27,19 @@ export type Payment = {
 
 export type PaymentWithMember = Payment & { memberName: string };
 
+export type PracticeDay = {
+  id: string;
+  date: string;
+  createdAt: string;
+};
+
+export type MonthSummary = {
+  month: string;
+  practiceDayCount: number;
+  totalCollected: number;
+  paymentCount: number;
+};
+
 function generateId(): string {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
 }
@@ -64,6 +77,14 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
 
     CREATE INDEX IF NOT EXISTS idx_payments_date ON payments(date);
     CREATE INDEX IF NOT EXISTS idx_payments_member ON payments(member_id);
+
+    CREATE TABLE IF NOT EXISTS practice_days (
+      id TEXT PRIMARY KEY NOT NULL,
+      date TEXT NOT NULL UNIQUE,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_practice_days_date ON practice_days(date);
   `);
 
   const existing = await db.getFirstAsync<{ count: number }>(
@@ -235,4 +256,106 @@ export async function addFeeSetting(
 export async function getCurrentFee(db: SQLiteDatabase): Promise<number> {
   const settings = await listFeeSettings(db);
   return standardFeeAt(todayIso(), settings);
+}
+
+export async function updateMemberName(
+  db: SQLiteDatabase,
+  id: string,
+  name: string,
+): Promise<void> {
+  await db.runAsync("UPDATE members SET name = ? WHERE id = ?", name.trim(), id);
+}
+
+export async function createPaymentForMember(
+  db: SQLiteDatabase,
+  input: {
+    memberId: string;
+    date: string;
+    amount: number;
+    type: PaymentType;
+  },
+): Promise<void> {
+  await db.runAsync(
+    "INSERT INTO payments (id, date, member_id, amount, type, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+    generateId(),
+    input.date,
+    input.memberId,
+    input.amount,
+    input.type,
+    new Date().toISOString(),
+  );
+}
+
+export async function listPracticeDays(
+  db: SQLiteDatabase,
+): Promise<PracticeDay[]> {
+  const rows = await db.getAllAsync<{
+    id: string;
+    date: string;
+    created_at: string;
+  }>("SELECT id, date, created_at FROM practice_days ORDER BY date ASC");
+  return rows.map((r) => ({ id: r.id, date: r.date, createdAt: r.created_at }));
+}
+
+export async function listPracticeDaysForMonth(
+  db: SQLiteDatabase,
+  month: string,
+): Promise<PracticeDay[]> {
+  const rows = await db.getAllAsync<{
+    id: string;
+    date: string;
+    created_at: string;
+  }>(
+    "SELECT id, date, created_at FROM practice_days WHERE date LIKE ? ORDER BY date ASC",
+    `${month}-%`,
+  );
+  return rows.map((r) => ({ id: r.id, date: r.date, createdAt: r.created_at }));
+}
+
+export async function addPracticeDay(
+  db: SQLiteDatabase,
+  date: string,
+): Promise<void> {
+  await db.runAsync(
+    "INSERT OR IGNORE INTO practice_days (id, date, created_at) VALUES (?, ?, ?)",
+    generateId(),
+    date,
+    new Date().toISOString(),
+  );
+}
+
+export async function deletePracticeDay(
+  db: SQLiteDatabase,
+  id: string,
+): Promise<void> {
+  await db.runAsync("DELETE FROM practice_days WHERE id = ?", id);
+}
+
+/** Distinct months (from practice days and payments) with a summary for each. */
+export async function listMonths(db: SQLiteDatabase): Promise<MonthSummary[]> {
+  const [practiceDays, payments] = await Promise.all([
+    listPracticeDays(db),
+    listPayments(db),
+  ]);
+
+  const byMonth = new Map<string, MonthSummary>();
+  function ensure(month: string): MonthSummary {
+    let summary = byMonth.get(month);
+    if (!summary) {
+      summary = { month, practiceDayCount: 0, totalCollected: 0, paymentCount: 0 };
+      byMonth.set(month, summary);
+    }
+    return summary;
+  }
+
+  for (const d of practiceDays) {
+    ensure(d.date.slice(0, 7)).practiceDayCount += 1;
+  }
+  for (const p of payments) {
+    const summary = ensure(p.date.slice(0, 7));
+    summary.totalCollected += p.amount;
+    summary.paymentCount += 1;
+  }
+
+  return Array.from(byMonth.values()).sort((a, b) => b.month.localeCompare(a.month));
 }

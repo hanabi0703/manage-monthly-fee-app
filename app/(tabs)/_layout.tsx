@@ -41,7 +41,7 @@ export default function TabLayout() {
       <Tabs.Screen
         name="fee-settings"
         options={{
-          title: "月謝設定",
+          title: "設定",
           tabBarIcon: ({ color }) => <TabIcon emoji="⚙️" color={color} />,
         }}
       />
