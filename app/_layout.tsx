@@ -1,0 +1,52 @@
+import { Suspense } from "react";
+import { ActivityIndicator, View } from "react-native";
+import { SQLiteProvider } from "expo-sqlite";
+import { Stack } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import { migrateDbIfNeeded } from "@/lib/db";
+import { colors } from "@/lib/theme";
+
+function LoadingScreen() {
+  return (
+    <View
+      style={{
+        flex: 1,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: colors.bg,
+      }}
+    >
+      <ActivityIndicator size="large" color={colors.text} />
+    </View>
+  );
+}
+
+export default function RootLayout() {
+  return (
+    <SafeAreaProvider>
+      <Suspense fallback={<LoadingScreen />}>
+        <SQLiteProvider
+          databaseName="monthly-fee.db"
+          onInit={migrateDbIfNeeded}
+          useSuspense
+        >
+          <StatusBar style="dark" />
+          <Stack
+            screenOptions={{
+              headerStyle: { backgroundColor: colors.card },
+              headerTintColor: colors.text,
+              contentStyle: { backgroundColor: colors.bg },
+            }}
+          >
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            <Stack.Screen
+              name="members/[id]"
+              options={{ title: "メンバー詳細" }}
+            />
+          </Stack>
+        </SQLiteProvider>
+      </Suspense>
+    </SafeAreaProvider>
+  );
+}

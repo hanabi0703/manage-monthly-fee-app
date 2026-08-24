@@ -1,32 +1,32 @@
 {
   "name": "manage-monthly-fee-app",
-  "version": "0.1.0",
-  "private": true,
-  "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
-  },
+  "version": "1.0.0",
+  "main": "expo-router/entry",
   "dependencies": {
-    "@prisma/adapter-better-sqlite3": "^7.9.1",
-    "@prisma/client": "^7.9.1",
-    "next": "16.3.2",
-    "prisma": "^7.9.1",
-    "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "@react-native-community/datetimepicker": "^9.1.0",
+    "expo": "~57.0.15",
+    "expo-constants": "^57.0.13",
+    "expo-linking": "^57.0.7",
+    "expo-router": "^57.0.15",
+    "expo-sqlite": "^57.0.1",
+    "expo-status-bar": "~57.0.1",
+    "react": "19.2.3",
+    "react-dom": "^19.2.3",
+    "react-native": "0.86.2",
+    "react-native-safe-area-context": "^5.9.1",
+    "react-native-screens": "^4.27.0",
+    "react-native-web": "^0.21.2"
   },
   "devDependencies": {
-    "@playwright/test": "^1.62.1",
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "eslint": "^9",
-    "eslint-config-next": "16.3.2",
+    "@types/react": "~19.2.2",
     "playwright-core": "^1.62.1",
-    "tailwindcss": "^4",
-    "tsx": "^4.23.12",
-    "typescript": "^5"
-  }
+    "typescript": "~6.0.3"
+  },
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web"
+  },
+  "private": true
 }
