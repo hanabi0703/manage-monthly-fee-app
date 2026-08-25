@@ -2,13 +2,19 @@ import { useCallback, useState } from "react";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Alert, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSQLiteContext } from "expo-sqlite";
-import { createPayment, getCurrentFee, listMembers, type PaymentType } from "@/lib/db";
+import {
+  createPaymentForMember,
+  getCurrentFee,
+  listMembers,
+  type Member,
+  type PaymentType,
+} from "@/lib/db";
 import { todayIso, formatYen } from "@/lib/format";
 import { colors } from "@/lib/theme";
 import { Screen } from "@/components/ui";
 import { AppCard } from "@/components/AppCard";
 import { AppButton } from "@/components/AppButton";
-import { NameField } from "@/components/NameField";
+import { MemberSelectField } from "@/components/MemberSelectField";
 import { PaymentFields } from "@/components/PaymentFields";
 
 export default function EntryScreen() {
@@ -16,10 +22,10 @@ export default function EntryScreen() {
   const router = useRouter();
 
   const [date, setDate] = useState(todayIso());
-  const [name, setName] = useState("");
+  const [memberId, setMemberId] = useState("");
   const [amount, setAmount] = useState("");
   const [type, setType] = useState<PaymentType>("MONTHLY");
-  const [memberNames, setMemberNames] = useState<string[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
   const [currentFee, setCurrentFee] = useState(0);
   const [submitting, setSubmitting] = useState(false);
 
@@ -27,9 +33,9 @@ export default function EntryScreen() {
     useCallback(() => {
       let cancelled = false;
       Promise.all([listMembers(db), getCurrentFee(db)]).then(
-        ([members, fee]) => {
+        ([memberList, fee]) => {
           if (cancelled) return;
-          setMemberNames(members.map((m) => m.name));
+          setMembers(memberList);
           setCurrentFee(fee);
           setAmount((prev) => (prev ? prev : fee > 0 ? String(fee) : ""));
         },
@@ -40,7 +46,7 @@ export default function EntryScreen() {
     }, [db]),
   );
 
-  const canSubmit = date.length === 10 && name.trim().length > 0 && amount.length > 0;
+  const canSubmit = date.length === 10 && memberId.length > 0 && amount.length > 0;
 
   async function handleSubmit() {
     const amountNum = Number(amount);
@@ -48,14 +54,14 @@ export default function EntryScreen() {
       Alert.alert("金額が正しくありません");
       return;
     }
-    if (!name.trim()) {
-      Alert.alert("名前を入力してください");
+    if (!memberId) {
+      Alert.alert("メンバーを選択してください");
       return;
     }
     setSubmitting(true);
     try {
-      await createPayment(db, { date, name: name.trim(), amount: amountNum, type });
-      setName("");
+      await createPaymentForMember(db, { memberId, date, amount: amountNum, type });
+      setMemberId("");
       setAmount(currentFee > 0 ? String(currentFee) : "");
       setType("MONTHLY");
       router.push("/");
@@ -74,11 +80,12 @@ export default function EntryScreen() {
           </Text>
         </View>
         <AppCard style={styles.form}>
-          <NameField
+          <MemberSelectField
+            testID="entry-member-select"
             label="メンバーの名前"
-            value={name}
-            onChange={setName}
-            suggestions={memberNames}
+            value={memberId}
+            onChange={setMemberId}
+            members={members}
           />
           <PaymentFields
             date={date}

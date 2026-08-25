@@ -198,22 +198,6 @@ export async function listPaymentsForMember(
   }));
 }
 
-export async function createPayment(
-  db: SQLiteDatabase,
-  input: { date: string; name: string; amount: number; type: PaymentType },
-): Promise<void> {
-  const member = await upsertMemberByName(db, input.name);
-  await db.runAsync(
-    "INSERT INTO payments (id, date, member_id, amount, type, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-    generateId(),
-    input.date,
-    member.id,
-    input.amount,
-    input.type,
-    new Date().toISOString(),
-  );
-}
-
 export async function deletePayment(
   db: SQLiteDatabase,
   id: string,

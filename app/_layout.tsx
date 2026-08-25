@@ -50,6 +50,14 @@ export default function RootLayout() {
               name="members/[id]/edit"
               options={{ title: "メンバー編集" }}
             />
+            <Stack.Screen
+              name="fee-history"
+              options={{ title: "月謝設定" }}
+            />
+            <Stack.Screen
+              name="practice-days"
+              options={{ title: "練習日設定" }}
+            />
           </Stack>
         </SQLiteProvider>
       </Suspense>

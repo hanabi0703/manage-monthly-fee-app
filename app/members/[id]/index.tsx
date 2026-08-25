@@ -3,24 +3,19 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Alert, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSQLiteContext } from "expo-sqlite";
 import {
-  createPaymentForMember,
   deletePayment,
-  getCurrentFee,
   getMember,
   listFeeSettings,
   listPaymentsForMember,
   type FeeSetting,
   type Member,
   type Payment,
-  type PaymentType,
 } from "@/lib/db";
 import { computeBalance, standardFeeAt } from "@/lib/balance";
-import { formatDate, formatYen, todayIso } from "@/lib/format";
+import { formatDate, formatYen } from "@/lib/format";
 import { colors } from "@/lib/theme";
 import { Badge, EmptyState, Screen, SectionLabel } from "@/components/ui";
 import { AppCard } from "@/components/AppCard";
-import { AppButton } from "@/components/AppButton";
-import { PaymentFields } from "@/components/PaymentFields";
 
 export default function MemberDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -29,13 +24,7 @@ export default function MemberDetailScreen() {
   const [member, setMember] = useState<Member | null>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [settings, setSettings] = useState<FeeSetting[]>([]);
-  const [currentFee, setCurrentFee] = useState(0);
   const [loaded, setLoaded] = useState(false);
-
-  const [payDate, setPayDate] = useState(todayIso());
-  const [payAmount, setPayAmount] = useState("");
-  const [payType, setPayType] = useState<PaymentType>("MONTHLY");
-  const [submitting, setSubmitting] = useState(false);
 
   const load = useCallback(() => {
     if (!id) return () => {};
@@ -44,14 +33,11 @@ export default function MemberDetailScreen() {
       getMember(db, id),
       listPaymentsForMember(db, id),
       listFeeSettings(db),
-      getCurrentFee(db),
-    ]).then(([m, p, s, fee]) => {
+    ]).then(([m, p, s]) => {
       if (cancelled) return;
       setMember(m);
       setPayments(p);
       setSettings(s);
-      setCurrentFee(fee);
-      setPayAmount((prev) => (prev ? prev : fee > 0 ? String(fee) : ""));
       setLoaded(true);
     });
     return () => {
@@ -64,29 +50,6 @@ export default function MemberDetailScreen() {
   async function handleDelete(paymentId: string) {
     await deletePayment(db, paymentId);
     load();
-  }
-
-  async function handleRecordPayment() {
-    if (!id) return;
-    const amountNum = Number(payAmount);
-    if (!Number.isFinite(amountNum) || amountNum < 0) {
-      Alert.alert("金額が正しくありません");
-      return;
-    }
-    setSubmitting(true);
-    try {
-      await createPaymentForMember(db, {
-        memberId: id,
-        date: payDate,
-        amount: amountNum,
-        type: payType,
-      });
-      setPayType("MONTHLY");
-      setPayAmount(currentFee > 0 ? String(currentFee) : "");
-      load();
-    } finally {
-      setSubmitting(false);
-    }
   }
 
   const monthlyPayments = payments.filter((p) => p.type === "MONTHLY");
@@ -152,31 +115,6 @@ export default function MemberDetailScreen() {
                   <Text style={styles.balanceValue}>なし（精算済み）</Text>
                 </>
               )}
-            </AppCard>
-
-            <SectionLabel>支払いを記録</SectionLabel>
-            <AppCard style={styles.form}>
-              <PaymentFields
-                dateLabel="参加日"
-                date={payDate}
-                onDateChange={setPayDate}
-                amount={payAmount}
-                onAmountChange={setPayAmount}
-                type={payType}
-                onTypeChange={setPayType}
-                testIDs={{
-                  date: "member-pay-date",
-                  amount: "member-pay-amount",
-                  typeMonthly: "member-pay-type-monthly",
-                  typeVisitor: "member-pay-type-visitor",
-                }}
-              />
-              <AppButton
-                testID="member-pay-submit"
-                title={submitting ? "登録中..." : "登録する"}
-                onPress={handleRecordPayment}
-                disabled={!payAmount || submitting}
-              />
             </AppCard>
 
             <View style={styles.historyHeader}>
@@ -260,7 +198,6 @@ const styles = StyleSheet.create({
   balanceLabel: { fontSize: 14, color: colors.textMuted },
   balanceValue: { fontSize: 26, fontWeight: "800", color: colors.text, marginTop: 6 },
   balanceNote: { fontSize: 12, color: colors.textMuted, marginTop: 6, lineHeight: 18 },
-  form: { gap: 20 },
   historyHeader: { marginTop: 4 },
   paymentRow: {
     flexDirection: "row",
