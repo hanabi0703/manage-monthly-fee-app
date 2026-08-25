@@ -36,6 +36,8 @@ export default function RootLayout() {
             screenOptions={{
               headerStyle: { backgroundColor: colors.card },
               headerTintColor: colors.text,
+              headerTitleStyle: { fontWeight: "700", color: colors.text },
+              headerBackTitle: "",
               contentStyle: { backgroundColor: colors.bg },
             }}
           >
@@ -47,10 +49,6 @@ export default function RootLayout() {
             <Stack.Screen
               name="members/[id]/edit"
               options={{ title: "メンバー編集" }}
-            />
-            <Stack.Screen
-              name="accounting/[month]"
-              options={{ title: "会計表" }}
             />
           </Stack>
         </SQLiteProvider>

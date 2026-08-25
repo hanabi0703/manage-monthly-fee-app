@@ -1,10 +1,13 @@
 import { useCallback, useState } from "react";
 import { useFocusEffect, useRouter } from "expo-router";
-import { Alert, ScrollView, StyleSheet, View } from "react-native";
+import { Alert, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSQLiteContext } from "expo-sqlite";
 import { createPayment, getCurrentFee, listMembers, type PaymentType } from "@/lib/db";
 import { todayIso, formatYen } from "@/lib/format";
-import { Card, PrimaryButton, Screen, ScreenTitle } from "@/components/ui";
+import { colors } from "@/lib/theme";
+import { Screen } from "@/components/ui";
+import { AppCard } from "@/components/AppCard";
+import { AppButton } from "@/components/AppButton";
 import { NameField } from "@/components/NameField";
 import { PaymentFields } from "@/components/PaymentFields";
 
@@ -63,47 +66,51 @@ export default function EntryScreen() {
 
   return (
     <Screen>
-      <ScrollView keyboardShouldPersistTaps="handled">
-        <ScreenTitle
-          title="支払いを記録"
-          subtitle={`現在の月謝額: ${formatYen(currentFee)}`}
-        />
-        <View style={styles.formWrap}>
-          <Card style={styles.form}>
-            <NameField
-              label="メンバーの名前"
-              value={name}
-              onChange={setName}
-              suggestions={memberNames}
-            />
-            <PaymentFields
-              date={date}
-              onDateChange={setDate}
-              amount={amount}
-              onAmountChange={setAmount}
-              type={type}
-              onTypeChange={setType}
-              testIDs={{
-                date: "entry-date",
-                amount: "entry-amount",
-                typeMonthly: "entry-type-monthly",
-                typeVisitor: "entry-type-visitor",
-              }}
-            />
-            <PrimaryButton
-              testID="entry-submit"
-              label={submitting ? "登録中..." : "登録する"}
-              onPress={handleSubmit}
-              disabled={!canSubmit || submitting}
-            />
-          </Card>
+      <ScrollView contentContainerStyle={styles.wrap} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+        <View style={styles.titleBlock}>
+          <Text style={styles.title}>支払いを記録</Text>
+          <Text style={styles.priceLine}>
+            現在の月謝額：<Text style={styles.priceValue}>{formatYen(currentFee)}</Text>
+          </Text>
         </View>
+        <AppCard style={styles.form}>
+          <NameField
+            label="メンバーの名前"
+            value={name}
+            onChange={setName}
+            suggestions={memberNames}
+          />
+          <PaymentFields
+            date={date}
+            onDateChange={setDate}
+            amount={amount}
+            onAmountChange={setAmount}
+            type={type}
+            onTypeChange={setType}
+            testIDs={{
+              date: "entry-date",
+              amount: "entry-amount",
+              typeMonthly: "entry-type-monthly",
+              typeVisitor: "entry-type-visitor",
+            }}
+          />
+          <AppButton
+            testID="entry-submit"
+            title={submitting ? "登録中..." : "登録する"}
+            onPress={handleSubmit}
+            disabled={!canSubmit || submitting}
+          />
+        </AppCard>
       </ScrollView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  formWrap: { padding: 16 },
-  form: { gap: 16 },
+  wrap: { padding: 20, paddingBottom: 48 },
+  titleBlock: { marginBottom: 20, gap: 6 },
+  title: { fontSize: 25, fontWeight: "800", color: colors.text },
+  priceLine: { fontSize: 15, color: colors.textMuted },
+  priceValue: { color: colors.green, fontWeight: "700" },
+  form: { gap: 20 },
 });

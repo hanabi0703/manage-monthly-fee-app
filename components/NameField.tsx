@@ -29,8 +29,8 @@ export function NameField({ label, value, onChange, suggestions }: Props) {
         onChangeText={onChange}
         onFocus={() => setFocused(true)}
         onBlur={() => setTimeout(() => setFocused(false), 150)}
-        placeholder="例: 山田太郎"
-        placeholderTextColor={colors.textFaint}
+        placeholder="例：山田太郎"
+        placeholderTextColor={colors.placeholder}
         style={styles.input}
       />
       {showSuggestions ? (
@@ -58,31 +58,31 @@ export function NameField({ label, value, onChange, suggestions }: Props) {
 }
 
 const styles = StyleSheet.create({
-  field: { gap: 6 },
-  label: { fontSize: 13, fontWeight: "600", color: colors.text },
+  field: { gap: 8 },
+  label: { fontSize: 15, fontWeight: "700", color: colors.text },
   input: {
+    minHeight: 54,
+    paddingHorizontal: 16,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    fontSize: 15,
+    borderRadius: 14,
+    fontSize: 17,
     color: colors.text,
     backgroundColor: colors.card,
   },
-  hint: { fontSize: 12, color: colors.textFaint },
+  hint: { fontSize: 12, color: colors.textMuted, lineHeight: 18 },
   suggestions: {
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 8,
+    borderRadius: 14,
     backgroundColor: colors.card,
     overflow: "hidden",
   },
   suggestionRow: {
-    paddingVertical: 9,
-    paddingHorizontal: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
     borderBottomWidth: 1,
     borderColor: colors.border,
   },
-  suggestionText: { fontSize: 14, color: colors.text },
+  suggestionText: { fontSize: 15, color: colors.text },
 });

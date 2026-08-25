@@ -17,14 +17,9 @@ import {
 import { computeBalance, standardFeeAt } from "@/lib/balance";
 import { formatDate, formatYen, todayIso } from "@/lib/format";
 import { colors } from "@/lib/theme";
-import {
-  Badge,
-  Card,
-  EmptyState,
-  PrimaryButton,
-  Screen,
-  SectionLabel,
-} from "@/components/ui";
+import { Badge, EmptyState, Screen, SectionLabel } from "@/components/ui";
+import { AppCard } from "@/components/AppCard";
+import { AppButton } from "@/components/AppButton";
 import { PaymentFields } from "@/components/PaymentFields";
 
 export default function MemberDetailScreen() {
@@ -113,20 +108,24 @@ export default function MemberDetailScreen() {
         contentContainerStyle={styles.wrap}
         data={payments}
         keyExtractor={(p) => p.id}
+        showsVerticalScrollIndicator={false}
         ListHeaderComponent={
           <View style={styles.header}>
             <View style={styles.nameRow}>
               <Text style={styles.name}>{member?.name ?? ""}さんのページ</Text>
               {id ? (
-                <Pressable onPress={() => router.push(`/members/${id}/edit`)}>
+                <Pressable
+                  hitSlop={10}
+                  onPress={() => router.push(`/members/${id}/edit`)}
+                >
                   <Text style={styles.editLink}>編集</Text>
                 </Pressable>
               ) : null}
             </View>
             <Text style={styles.subtitle}>
-              誰でも閲覧できます。支払い履歴と繰越金・未払金の状況です。
+              支払い履歴と繰越金・未払金の状況です。
             </Text>
-            <Card style={styles.balanceCard}>
+            <AppCard style={styles.balanceCard}>
               {balance < 0 ? (
                 <>
                   <Text style={styles.balanceLabel}>未払金</Text>
@@ -153,10 +152,10 @@ export default function MemberDetailScreen() {
                   <Text style={styles.balanceValue}>なし（精算済み）</Text>
                 </>
               )}
-            </Card>
+            </AppCard>
 
             <SectionLabel>支払いを記録</SectionLabel>
-            <Card style={styles.form}>
+            <AppCard style={styles.form}>
               <PaymentFields
                 dateLabel="参加日"
                 date={payDate}
@@ -172,13 +171,13 @@ export default function MemberDetailScreen() {
                   typeVisitor: "member-pay-type-visitor",
                 }}
               />
-              <PrimaryButton
+              <AppButton
                 testID="member-pay-submit"
-                label={submitting ? "登録中..." : "登録する"}
+                title={submitting ? "登録中..." : "登録する"}
                 onPress={handleRecordPayment}
                 disabled={!payAmount || submitting}
               />
-            </Card>
+            </AppCard>
 
             <View style={styles.historyHeader}>
               <SectionLabel>支払い履歴</SectionLabel>
@@ -194,7 +193,7 @@ export default function MemberDetailScreen() {
           const diff = std === null ? null : item.amount - std;
           const paidDate = item.createdAt.slice(0, 10);
           return (
-            <View style={styles.paymentRow}>
+            <AppCard style={styles.paymentRow}>
               <View style={styles.paymentInfo}>
                 <Text style={styles.paymentDate}>
                   参加日: {formatDate(item.date)}
@@ -223,6 +222,7 @@ export default function MemberDetailScreen() {
                 </View>
               </View>
               <Pressable
+                hitSlop={10}
                 onPress={() =>
                   Alert.alert("削除しますか？", undefined, [
                     { text: "キャンセル", style: "cancel" },
@@ -236,7 +236,7 @@ export default function MemberDetailScreen() {
               >
                 <Text style={styles.deleteText}>削除</Text>
               </Pressable>
-            </View>
+            </AppCard>
           );
         }}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
@@ -246,38 +246,32 @@ export default function MemberDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  wrap: { padding: 16, paddingBottom: 32 },
-  header: { gap: 12, marginBottom: 4 },
+  wrap: { padding: 20, paddingBottom: 48 },
+  header: { gap: 14, marginBottom: 4 },
   nameRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
-  name: { fontSize: 20, fontWeight: "700", color: colors.text },
-  editLink: { fontSize: 13, color: colors.textMuted, textDecorationLine: "underline" },
-  subtitle: { fontSize: 13, color: colors.textMuted },
+  name: { fontSize: 24, fontWeight: "800", color: colors.text },
+  editLink: { fontSize: 14, color: colors.textMuted, textDecorationLine: "underline" },
+  subtitle: { fontSize: 14, color: colors.textMuted },
   balanceCard: { gap: 4 },
-  balanceLabel: { fontSize: 13, color: colors.textMuted },
-  balanceValue: { fontSize: 26, fontWeight: "700", color: colors.text },
-  balanceNote: { fontSize: 12, color: colors.textFaint, marginTop: 4 },
-  form: { gap: 16 },
-  historyHeader: { marginTop: 8 },
+  balanceLabel: { fontSize: 14, color: colors.textMuted },
+  balanceValue: { fontSize: 26, fontWeight: "800", color: colors.text, marginTop: 6 },
+  balanceNote: { fontSize: 12, color: colors.textMuted, marginTop: 6, lineHeight: 18 },
+  form: { gap: 20 },
+  historyHeader: { marginTop: 4 },
   paymentRow: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
   },
   paymentInfo: { gap: 6 },
-  paymentDate: { fontSize: 14, fontWeight: "600", color: colors.text },
-  paidDate: { fontSize: 12, color: colors.textFaint },
-  paymentMeta: { flexDirection: "row", alignItems: "center", gap: 8 },
+  paymentDate: { fontSize: 14, fontWeight: "700", color: colors.text },
+  paidDate: { fontSize: 12, color: colors.textMuted },
+  paymentMeta: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 2 },
   paymentAmount: { fontSize: 13, color: colors.text },
-  deleteText: { fontSize: 12, color: colors.textFaint },
-  separator: { height: 8 },
+  deleteText: { fontSize: 13, color: colors.coral },
+  separator: { height: 10 },
 });

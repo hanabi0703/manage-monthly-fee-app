@@ -1,6 +1,7 @@
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { colors } from "@/lib/theme";
 import { DateField } from "@/components/DateField";
+import { AppInput } from "@/components/AppInput";
 import type { PaymentType } from "@/lib/db";
 
 type Props = {
@@ -37,45 +38,35 @@ export function PaymentFields({
         value={date}
         onChange={onDateChange}
       />
-      <View style={styles.field}>
-        <Text style={styles.label}>もらった金額</Text>
-        <TextInput
-          testID={testIDs?.amount}
-          value={amount}
-          onChangeText={(t) => onAmountChange(t.replace(/[^0-9]/g, ""))}
-          keyboardType="number-pad"
-          placeholder="0"
-          placeholderTextColor={colors.textFaint}
-          style={styles.input}
-        />
-      </View>
+      <AppInput
+        testID={testIDs?.amount}
+        label="もらった金額"
+        value={amount}
+        onChangeText={(t) => onAmountChange(t.replace(/[^0-9]/g, ""))}
+        keyboardType="number-pad"
+        placeholder="0"
+      />
       <View style={styles.field}>
         <Text style={styles.label}>区分</Text>
-        <View style={styles.segmented}>
+        <View style={styles.typeRow}>
           <Pressable
             testID={testIDs?.typeMonthly}
-            style={[styles.segment, type === "MONTHLY" && styles.segmentActive]}
+            style={[styles.typeButton, type === "MONTHLY" && styles.typeSelected]}
             onPress={() => onTypeChange("MONTHLY")}
           >
             <Text
-              style={[
-                styles.segmentText,
-                type === "MONTHLY" && styles.segmentTextActive,
-              ]}
+              style={[styles.typeText, type === "MONTHLY" && styles.typeSelectedText]}
             >
               月謝
             </Text>
           </Pressable>
           <Pressable
             testID={testIDs?.typeVisitor}
-            style={[styles.segment, type === "VISITOR" && styles.segmentActive]}
+            style={[styles.typeButton, type === "VISITOR" && styles.typeSelected]}
             onPress={() => onTypeChange("VISITOR")}
           >
             <Text
-              style={[
-                styles.segmentText,
-                type === "VISITOR" && styles.segmentTextActive,
-              ]}
+              style={[styles.typeText, type === "VISITOR" && styles.typeSelectedText]}
             >
               ビジター
             </Text>
@@ -87,38 +78,23 @@ export function PaymentFields({
 }
 
 const styles = StyleSheet.create({
-  field: { gap: 6 },
-  label: { fontSize: 13, fontWeight: "600", color: colors.text },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    fontSize: 15,
-    color: colors.text,
-    backgroundColor: colors.card,
-  },
-  segmented: { flexDirection: "row", gap: 8 },
-  segment: {
+  field: { gap: 8 },
+  label: { fontSize: 15, fontWeight: "700", color: colors.text },
+  typeRow: { flexDirection: "row", gap: 10 },
+  typeButton: {
     flex: 1,
+    height: 50,
+    justifyContent: "center",
+    alignItems: "center",
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 8,
-    paddingVertical: 10,
-    alignItems: "center",
-    backgroundColor: colors.card,
+    backgroundColor: "#FFFFFF",
   },
-  segmentActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
+  typeSelected: {
+    backgroundColor: colors.green,
+    borderColor: colors.green,
   },
-  segmentText: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: colors.text,
-  },
-  segmentTextActive: {
-    color: colors.primaryText,
-  },
+  typeText: { color: colors.text, fontSize: 15, fontWeight: "700" },
+  typeSelectedText: { color: "#FFFFFF" },
 });

@@ -7,6 +7,8 @@ import { computeBalance } from "@/lib/balance";
 import { formatYen } from "@/lib/format";
 import { colors } from "@/lib/theme";
 import { Badge, EmptyState, Screen, ScreenTitle } from "@/components/ui";
+import { AppCard } from "@/components/AppCard";
+import { DoodleIcon } from "@/components/DoodleIcon";
 
 type Row = { id: string; name: string; balance: number };
 
@@ -56,17 +58,24 @@ export default function MembersScreen() {
           renderItem={({ item }) => (
             <Pressable
               testID={`member-row-${item.id}`}
-              style={styles.row}
               onPress={() => router.push(`/members/${item.id}`)}
             >
-              <Text style={styles.name}>{item.name}</Text>
-              {item.balance < 0 ? (
-                <Badge label={`未払金 ${formatYen(Math.abs(item.balance))}`} tone="unpaid" />
-              ) : item.balance > 0 ? (
-                <Badge label={`繰越金 ${formatYen(item.balance)}`} tone="credit" />
-              ) : (
-                <Badge label="精算済み" tone="neutral" />
-              )}
+              <AppCard style={styles.row}>
+                <View style={styles.rowLeft}>
+                  <DoodleIcon name="members" size={22} color={colors.tabInactive} />
+                  <View>
+                    <Text style={styles.name}>{item.name}</Text>
+                    {item.balance < 0 ? (
+                      <Badge label={`未払金 ${formatYen(Math.abs(item.balance))}`} tone="unpaid" />
+                    ) : item.balance > 0 ? (
+                      <Badge label={`繰越金 ${formatYen(item.balance)}`} tone="credit" />
+                    ) : (
+                      <Badge label="精算済み" tone="neutral" />
+                    )}
+                  </View>
+                </View>
+                <Text style={styles.chevron}>›</Text>
+              </AppCard>
             </Pressable>
           )}
           ItemSeparatorComponent={() => <View style={styles.separator} />}
@@ -77,19 +86,15 @@ export default function MembersScreen() {
 }
 
 const styles = StyleSheet.create({
-  emptyWrap: { padding: 16 },
-  list: { paddingHorizontal: 16, paddingBottom: 24 },
+  emptyWrap: { padding: 20 },
+  list: { padding: 20, paddingTop: 4 },
   row: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
   },
-  separator: { height: 10 },
-  name: { fontSize: 15, fontWeight: "600", color: colors.text },
+  rowLeft: { flexDirection: "row", alignItems: "center", gap: 14 },
+  separator: { height: 12 },
+  name: { fontSize: 18, fontWeight: "700", color: colors.text, marginBottom: 8 },
+  chevron: { fontSize: 26, color: colors.textMuted },
 });

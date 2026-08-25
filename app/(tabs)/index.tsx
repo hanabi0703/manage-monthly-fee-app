@@ -1,82 +1,253 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useFocusEffect, useRouter } from "expo-router";
-import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSQLiteContext } from "expo-sqlite";
-import { listMonths, type MonthSummary } from "@/lib/db";
-import { formatMonthLabel, formatYen } from "@/lib/format";
+import {
+  listMembers,
+  listMonths,
+  listPayments,
+  listPracticeDaysForMonth,
+  type Member,
+  type PaymentWithMember,
+} from "@/lib/db";
+import { currentMonthIso, formatMonthLabel, formatShortDate, formatYen, shiftMonth } from "@/lib/format";
 import { colors } from "@/lib/theme";
 import { EmptyState, Screen, ScreenTitle } from "@/components/ui";
+import { AppCard } from "@/components/AppCard";
+import { DoodleIcon } from "@/components/DoodleIcon";
+
+const MEMBER_COL_WIDTH = 112;
+const DATE_COL_WIDTH = 88;
 
 export default function DashboardScreen() {
   const db = useSQLiteContext();
   const router = useRouter();
-  const [months, setMonths] = useState<MonthSummary[]>([]);
+
+  const [selectedMonth, setSelectedMonth] = useState(currentMonthIso());
+  const [members, setMembers] = useState<Member[]>([]);
+  const [payments, setPayments] = useState<PaymentWithMember[]>([]);
+  const [dateKeys, setDateKeys] = useState<string[]>([]);
   const [loaded, setLoaded] = useState(false);
 
-  useFocusEffect(
-    useCallback(() => {
+  const didInit = useRef(false);
+  useEffect(() => {
+    if (didInit.current) return;
+    didInit.current = true;
+    listMonths(db).then((months) => {
+      if (months.length > 0) {
+        setSelectedMonth(months[0].month);
+      }
+    });
+  }, [db]);
+
+  const load = useCallback(
+    (month: string) => {
       let cancelled = false;
-      listMonths(db).then((rows) => {
-        if (!cancelled) {
-          setMonths(rows);
-          setLoaded(true);
-        }
+      Promise.all([
+        listMembers(db),
+        listPayments(db),
+        listPracticeDaysForMonth(db, month),
+      ]).then(([m, allPayments, practiceDays]) => {
+        if (cancelled) return;
+        const monthPayments = allPayments.filter((p) => p.date.slice(0, 7) === month);
+        const dates = Array.from(
+          new Set([
+            ...practiceDays.map((d) => d.date),
+            ...monthPayments.map((p) => p.date),
+          ]),
+        ).sort((a, b) => a.localeCompare(b));
+        setMembers(m);
+        setPayments(monthPayments);
+        setDateKeys(dates);
+        setLoaded(true);
       });
       return () => {
         cancelled = true;
       };
-    }, [db]),
+    },
+    [db],
   );
+
+  useFocusEffect(useCallback(() => load(selectedMonth), [load, selectedMonth]));
+
+  const practiceDayCount = dateKeys.length;
+  const totalCollected = payments.reduce((sum, p) => sum + p.amount, 0);
+
+  const cellMap = new Map<string, PaymentWithMember[]>();
+  for (const p of payments) {
+    const key = `${p.memberId}__${p.date}`;
+    const list = cellMap.get(key) ?? [];
+    list.push(p);
+    cellMap.set(key, list);
+  }
 
   return (
     <Screen>
-      <ScreenTitle
-        title="会計表"
-        subtitle="月ごとに、練習日×メンバーの支払い状況を確認できます。"
-      />
-      {loaded && months.length === 0 ? (
-        <View style={styles.emptyWrap}>
-          <EmptyState>
-            まだ記録がありません。「設定」タブで練習日を登録するか、「入力」タブから記録してください。
-          </EmptyState>
-        </View>
-      ) : (
-        <FlatList
-          contentContainerStyle={styles.list}
-          data={months}
-          keyExtractor={(m) => m.month}
-          renderItem={({ item }) => (
-            <Pressable
-              testID={`month-row-${item.month}`}
-              style={styles.row}
-              onPress={() => router.push(`/accounting/${item.month}`)}
-            >
-              <Text style={styles.monthLabel}>{formatMonthLabel(item.month)}</Text>
-              <Text style={styles.monthMeta}>
-                練習日 {item.practiceDayCount}日 ・ 集金 {formatYen(item.totalCollected)}
-              </Text>
-            </Pressable>
-          )}
-          ItemSeparatorComponent={() => <View style={styles.separator} />}
+      <ScrollView contentContainerStyle={styles.wrap} showsVerticalScrollIndicator={false}>
+        <ScreenTitle
+          title="会計表"
+          subtitle="月ごとに、練習日×メンバーの支払い状況を確認できます。"
         />
-      )}
+
+        <AppCard style={styles.summaryCard}>
+          <View style={styles.monthNav}>
+            <Pressable
+              testID="accounting-month-prev"
+              style={styles.monthNavButton}
+              onPress={() => setSelectedMonth((m) => shiftMonth(m, -1))}
+              hitSlop={8}
+            >
+              <Text style={styles.monthNavButtonText}>◀</Text>
+            </Pressable>
+            <Text style={styles.monthLabel}>{formatMonthLabel(selectedMonth)}</Text>
+            <Pressable
+              testID="accounting-month-next"
+              style={styles.monthNavButton}
+              onPress={() => setSelectedMonth((m) => shiftMonth(m, 1))}
+              hitSlop={8}
+            >
+              <Text style={styles.monthNavButtonText}>▶</Text>
+            </Pressable>
+          </View>
+          <Text style={styles.summaryText}>
+            練習日 {practiceDayCount}日 ・ 集金 {formatYen(totalCollected)}
+          </Text>
+        </AppCard>
+
+        {loaded && members.length === 0 ? (
+          <EmptyState>まだメンバーが登録されていません。「入力」タブから記録してください。</EmptyState>
+        ) : loaded && dateKeys.length === 0 ? (
+          <EmptyState>
+            この月の練習日が登録されていません。「設定」タブで登録するか、支払いを記録してください。
+          </EmptyState>
+        ) : (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <View style={styles.table}>
+              <View style={styles.headRow}>
+                <View style={[styles.cell, styles.memberCol, styles.headCell]}>
+                  <Text style={styles.headText}>メンバー</Text>
+                </View>
+                {dateKeys.map((d) => (
+                  <View key={d} style={[styles.cell, styles.dateCol, styles.headCell]}>
+                    <Text style={styles.headText}>{formatShortDate(d)}</Text>
+                  </View>
+                ))}
+              </View>
+              {members.map((m) => (
+                <View key={m.id} style={styles.row}>
+                  <View style={[styles.cell, styles.memberCol]}>
+                    <Text
+                      style={styles.nameCell}
+                      numberOfLines={1}
+                      onPress={() => router.push(`/members/${m.id}`)}
+                    >
+                      {m.name}
+                    </Text>
+                  </View>
+                  {dateKeys.map((d) => {
+                    const cell = cellMap.get(`${m.id}__${d}`) ?? [];
+                    return (
+                      <View key={d} style={[styles.cell, styles.dateCol]}>
+                        {cell.length === 0 ? (
+                          <Text style={styles.dash}>-</Text>
+                        ) : (
+                          cell.map((p) => (
+                            <View
+                              key={p.id}
+                              style={[
+                                styles.amountPill,
+                                {
+                                  backgroundColor:
+                                    p.type === "MONTHLY"
+                                      ? colors.monthlyBg
+                                      : colors.visitorBg,
+                                },
+                              ]}
+                            >
+                              <DoodleIcon
+                                name={p.type === "MONTHLY" ? "leaf" : "flower"}
+                                size={11}
+                                color={
+                                  p.type === "MONTHLY"
+                                    ? colors.monthlyText
+                                    : colors.visitorText
+                                }
+                              />
+                              <Text
+                                style={[
+                                  styles.amountPillText,
+                                  {
+                                    color:
+                                      p.type === "MONTHLY"
+                                        ? colors.monthlyText
+                                        : colors.visitorText,
+                                  },
+                                ]}
+                              >
+                                {formatYen(p.amount)}
+                              </Text>
+                            </View>
+                          ))
+                        )}
+                      </View>
+                    );
+                  })}
+                </View>
+              ))}
+            </View>
+          </ScrollView>
+        )}
+      </ScrollView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  emptyWrap: { padding: 16 },
-  list: { padding: 16 },
-  row: {
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 10,
-    paddingVertical: 14,
-    paddingHorizontal: 14,
-    gap: 4,
+  wrap: { padding: 20, paddingBottom: 48 },
+  summaryCard: { marginTop: 4, marginBottom: 18, gap: 10 },
+  monthNav: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 18,
   },
-  separator: { height: 10 },
-  monthLabel: { fontSize: 16, fontWeight: "700", color: colors.text },
-  monthMeta: { fontSize: 13, color: colors.textMuted },
+  monthNavButton: {
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 12,
+    backgroundColor: colors.bg,
+  },
+  monthNavButtonText: { fontSize: 15, fontWeight: "700", color: colors.text },
+  monthLabel: { fontSize: 22, fontWeight: "800", color: colors.text, minWidth: 120, textAlign: "center" },
+  summaryText: { textAlign: "center", color: colors.textMuted, fontSize: 15 },
+  table: { borderWidth: 1, borderColor: colors.border, borderRadius: 16, overflow: "hidden" },
+  headRow: { flexDirection: "row", backgroundColor: colors.tableHeadBg },
+  row: { flexDirection: "row", borderTopWidth: 1, borderTopColor: colors.border },
+  cell: {
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderLeftWidth: 1,
+    borderLeftColor: colors.border,
+    justifyContent: "center",
+    gap: 4,
+    minHeight: 52,
+  },
+  headCell: { borderLeftWidth: 0 },
+  memberCol: { width: MEMBER_COL_WIDTH, borderLeftWidth: 0 },
+  dateCol: { width: DATE_COL_WIDTH },
+  headText: { fontWeight: "700", color: colors.textMuted, fontSize: 12 },
+  nameCell: { fontWeight: "700", color: colors.text, fontSize: 13 },
+  dash: { color: colors.disabled, fontSize: 14 },
+  amountPill: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    alignSelf: "flex-start",
+    borderRadius: 999,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  amountPillText: { fontSize: 10.5, fontWeight: "700" },
 });

@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { Alert, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, StyleSheet, View } from "react-native";
 import { useSQLiteContext } from "expo-sqlite";
 import { getMember, updateMemberName } from "@/lib/db";
-import { colors } from "@/lib/theme";
-import { Card, PrimaryButton, Screen, ScreenTitle } from "@/components/ui";
+import { Screen, ScreenTitle } from "@/components/ui";
+import { AppCard } from "@/components/AppCard";
+import { AppButton } from "@/components/AppButton";
+import { AppInput } from "@/components/AppInput";
 
 export default function EditMemberScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -41,43 +43,27 @@ export default function EditMemberScreen() {
     <Screen>
       <ScreenTitle title="メンバー編集" />
       <View style={styles.wrap}>
-        <Card style={styles.form}>
-          <View style={styles.field}>
-            <Text style={styles.label}>名前</Text>
-            <TextInput
-              testID="edit-member-name"
-              value={name}
-              onChangeText={setName}
-              style={styles.input}
-              placeholder="例: 山田太郎"
-              placeholderTextColor={colors.textFaint}
-            />
-          </View>
-          <PrimaryButton
+        <AppCard style={styles.form}>
+          <AppInput
+            testID="edit-member-name"
+            label="名前"
+            value={name}
+            onChangeText={setName}
+            placeholder="例：山田太郎"
+          />
+          <AppButton
             testID="edit-member-submit"
-            label={submitting ? "保存中..." : "保存する"}
+            title={submitting ? "保存中..." : "保存する"}
             onPress={handleSave}
             disabled={!name.trim() || submitting}
           />
-        </Card>
+        </AppCard>
       </View>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { padding: 16 },
-  form: { gap: 14 },
-  field: { gap: 6 },
-  label: { fontSize: 13, fontWeight: "600", color: colors.text },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    fontSize: 15,
-    color: colors.text,
-    backgroundColor: colors.card,
-  },
+  wrap: { padding: 20 },
+  form: { gap: 20 },
 });

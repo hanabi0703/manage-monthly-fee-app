@@ -28,11 +28,7 @@ export function DateField({ label, value, onChange, testID }: Props) {
         })
       ) : (
         <>
-          <Pressable
-            testID={testID}
-            style={styles.button}
-            onPress={() => setShowPicker(true)}
-          >
+          <Pressable style={styles.button} onPress={() => setShowPicker(true)}>
             <Text style={styles.buttonText}>{formatDate(value)}</Text>
           </Pressable>
           {showPicker && (
@@ -56,26 +52,29 @@ export function DateField({ label, value, onChange, testID }: Props) {
 }
 
 const webInputStyle: Record<string, string> = {
-  fontSize: "15px",
-  padding: "10px 12px",
-  borderRadius: "8px",
+  fontSize: "17px",
+  height: "54px",
+  padding: "0 16px",
+  borderRadius: "14px",
   border: `1px solid ${colors.border}`,
   color: colors.text,
   width: "100%",
   boxSizing: "border-box",
   fontFamily: "inherit",
+  backgroundColor: "#FFFFFF",
 };
 
 const styles = StyleSheet.create({
-  field: { gap: 6 },
-  label: { fontSize: 13, fontWeight: "600", color: colors.text },
+  field: { gap: 8 },
+  label: { fontSize: 15, fontWeight: "700", color: colors.text },
   button: {
+    minHeight: 54,
+    justifyContent: "center",
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    borderRadius: 14,
+    paddingHorizontal: 16,
     backgroundColor: colors.card,
   },
-  buttonText: { fontSize: 15, color: colors.text },
+  buttonText: { fontSize: 17, color: colors.text },
 });
