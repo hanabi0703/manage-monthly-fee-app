@@ -85,6 +85,9 @@ export default function DashboardScreen() {
 
   const practiceDayCount = dateKeys.length;
   const totalCollected = payments.reduce((sum, p) => sum + p.amount, 0);
+  const today = todayIso();
+  const lastPracticeDay = dateKeys.length > 0 ? dateKeys[dateKeys.length - 1] : null;
+  const pastDueForMonth = !!lastPracticeDay && today >= lastPracticeDay;
 
   const cellMap = new Map<string, PaymentWithMember[]>();
   for (const p of payments) {
@@ -190,6 +193,11 @@ export default function DashboardScreen() {
                   .reduce((sum, p) => sum + p.amount, 0);
                 const status = memberStatus[m.id] ?? "MONTHLY";
                 const isVisitor = status === "VISITOR";
+                const monthlyPaidTotal = payments
+                  .filter((p) => p.memberId === m.id && p.type === "MONTHLY")
+                  .reduce((sum, p) => sum + p.amount, 0);
+                const showMonthlyUnpaid =
+                  !isVisitor && pastDueForMonth && monthlyPaidTotal < monthlyFee;
                 return (
                 <View key={m.id} style={styles.row}>
                   <View style={[styles.cell, styles.memberCol]}>
@@ -227,14 +235,23 @@ export default function DashboardScreen() {
                       (p) => p.id !== matchingVisitorPayment?.id,
                     );
                     const showUnpaidVisitor = !!att && isVisitor && !matchingVisitorPayment;
-                    const showAttended = !!att && !isVisitor;
+                    const showAttended = !!att;
                     const isEmpty =
                       !att && extraPayments.length === 0 && !matchingVisitorPayment;
+                    const isPastOrToday = d <= today;
 
                     return (
                       <View key={d} style={[styles.cell, styles.dateCol]}>
                         {isEmpty ? (
-                          <Text style={styles.dash}>-</Text>
+                          isPastOrToday ? (
+                            <View style={[styles.amountPill, styles.absentPill]}>
+                              <Text style={[styles.amountPillText, styles.absentPillText]}>
+                                欠席
+                              </Text>
+                            </View>
+                          ) : (
+                            <Text style={styles.dash}>-</Text>
+                          )
                         ) : (
                           <>
                             {showAttended ? (
@@ -297,6 +314,11 @@ export default function DashboardScreen() {
                   })}
                   <View style={[styles.cell, styles.totalCol]}>
                     <Text style={styles.totalCell}>{formatYen(memberTotal)}</Text>
+                    {showMonthlyUnpaid ? (
+                      <View style={[styles.amountPill, styles.unpaidPill]}>
+                        <Text style={[styles.amountPillText, styles.unpaidPillText]}>未払い</Text>
+                      </View>
+                    ) : null}
                   </View>
                 </View>
                 );
@@ -380,4 +402,8 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   amountPillText: { fontSize: 10.5, fontWeight: "700" },
+  absentPill: { backgroundColor: colors.tableHeadBg },
+  absentPillText: { color: colors.textMuted },
+  unpaidPill: { backgroundColor: colors.unpaidBg, alignSelf: "center" },
+  unpaidPillText: { color: colors.unpaidText },
 });
