@@ -1,13 +1,16 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { colors } from "@/lib/theme";
-import { DateField } from "@/components/DateField";
-import { AppInput } from "@/components/AppInput";
-import type { PaymentType } from "@/lib/db";
+import { PracticeDaySelectField } from "@/components/PracticeDaySelectField";
+import { AmountSelectField, type AmountOption } from "@/components/AmountSelectField";
+import type { PaymentType, PracticeDay } from "@/lib/db";
 
 type Props = {
   dateLabel?: string;
   date: string;
   onDateChange: (value: string) => void;
+  practiceDays: PracticeDay[];
+  amountOption: AmountOption | null;
+  onAmountOptionChange: (value: AmountOption) => void;
   amount: string;
   onAmountChange: (value: string) => void;
   type: PaymentType;
@@ -24,6 +27,9 @@ export function PaymentFields({
   dateLabel = "日付",
   date,
   onDateChange,
+  practiceDays,
+  amountOption,
+  onAmountOptionChange,
   amount,
   onAmountChange,
   type,
@@ -32,19 +38,19 @@ export function PaymentFields({
 }: Props) {
   return (
     <>
-      <DateField
+      <PracticeDaySelectField
         testID={testIDs?.date}
         label={dateLabel}
         value={date}
         onChange={onDateChange}
+        practiceDays={practiceDays}
       />
-      <AppInput
+      <AmountSelectField
         testID={testIDs?.amount}
-        label="もらった金額"
-        value={amount}
-        onChangeText={(t) => onAmountChange(t.replace(/[^0-9]/g, ""))}
-        keyboardType="number-pad"
-        placeholder="0"
+        option={amountOption}
+        onOptionChange={onAmountOptionChange}
+        amount={amount}
+        onAmountChange={onAmountChange}
       />
       <View style={styles.field}>
         <Text style={styles.label}>区分</Text>
