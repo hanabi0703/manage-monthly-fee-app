@@ -3,11 +3,13 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSQLiteContext } from "expo-sqlite";
 import {
+  listAttendance,
   listFeeSettings,
   listMembers,
   listMonths,
   listPayments,
   listPracticeDaysForMonth,
+  type Attendance,
   type Member,
   type PaymentWithMember,
 } from "@/lib/db";
@@ -30,6 +32,7 @@ export default function DashboardScreen() {
   const [selectedMonth, setSelectedMonth] = useState(currentMonthIso());
   const [members, setMembers] = useState<Member[]>([]);
   const [payments, setPayments] = useState<PaymentWithMember[]>([]);
+  const [attendance, setAttendance] = useState<Attendance[]>([]);
   const [dateKeys, setDateKeys] = useState<string[]>([]);
   const [monthlyFee, setMonthlyFee] = useState(0);
   const [loaded, setLoaded] = useState(false);
@@ -51,19 +54,23 @@ export default function DashboardScreen() {
       Promise.all([
         listMembers(db),
         listPayments(db),
+        listAttendance(db),
         listPracticeDaysForMonth(db, month),
         listFeeSettings(db),
-      ]).then(([m, allPayments, practiceDays, feeSettings]) => {
+      ]).then(([m, allPayments, allAttendance, practiceDays, feeSettings]) => {
         if (cancelled) return;
         const monthPayments = allPayments.filter((p) => p.date.slice(0, 7) === month);
+        const monthAttendance = allAttendance.filter((a) => a.date.slice(0, 7) === month);
         const dates = Array.from(
           new Set([
             ...practiceDays.map((d) => d.date),
             ...monthPayments.map((p) => p.date),
+            ...monthAttendance.map((a) => a.date),
           ]),
         ).sort((a, b) => a.localeCompare(b));
         setMembers(m);
         setPayments(monthPayments);
+        setAttendance(monthAttendance);
         setDateKeys(dates);
         setMonthlyFee(standardFeeAt(`${month}-01`, feeSettings));
         setLoaded(true);
@@ -86,6 +93,11 @@ export default function DashboardScreen() {
     const list = cellMap.get(key) ?? [];
     list.push(p);
     cellMap.set(key, list);
+  }
+
+  const attendanceMap = new Map<string, Attendance>();
+  for (const a of attendance) {
+    attendanceMap.set(`${a.memberId}__${a.date}`, a);
   }
 
   return (
@@ -182,49 +194,81 @@ export default function DashboardScreen() {
                     </Text>
                   </View>
                   {dateKeys.map((d) => {
-                    const cell = cellMap.get(`${m.id}__${d}`) ?? [];
+                    const key = `${m.id}__${d}`;
+                    const att = attendanceMap.get(key);
+                    const cellPayments = cellMap.get(key) ?? [];
+                    const matchingVisitorPayment =
+                      att?.type === "VISITOR"
+                        ? cellPayments.find((p) => p.type === "VISITOR")
+                        : undefined;
+                    const extraPayments = cellPayments.filter(
+                      (p) => p.id !== matchingVisitorPayment?.id,
+                    );
+                    const showUnpaidVisitor = att?.type === "VISITOR" && !matchingVisitorPayment;
+                    const showAttended = att?.type === "MONTHLY";
+                    const isEmpty =
+                      !att && extraPayments.length === 0 && !matchingVisitorPayment;
+
                     return (
                       <View key={d} style={[styles.cell, styles.dateCol]}>
-                        {cell.length === 0 ? (
+                        {isEmpty ? (
                           <Text style={styles.dash}>-</Text>
                         ) : (
-                          cell.map((p) => (
-                            <View
-                              key={p.id}
-                              style={[
-                                styles.amountPill,
-                                {
-                                  backgroundColor:
-                                    p.type === "MONTHLY"
-                                      ? colors.monthlyBg
-                                      : colors.visitorBg,
-                                },
-                              ]}
-                            >
-                              <DoodleIcon
-                                name={p.type === "MONTHLY" ? "leaf" : "flower"}
-                                size={11}
-                                color={
-                                  p.type === "MONTHLY"
-                                    ? colors.monthlyText
-                                    : colors.visitorText
-                                }
-                              />
-                              <Text
+                          <>
+                            {showAttended ? (
+                              <View style={[styles.amountPill, { backgroundColor: colors.monthlyBg }]}>
+                                <DoodleIcon name="leaf" size={11} color={colors.monthlyText} />
+                                <Text style={[styles.amountPillText, { color: colors.monthlyText }]}>
+                                  出席
+                                </Text>
+                              </View>
+                            ) : null}
+                            {showUnpaidVisitor ? (
+                              <View style={[styles.amountPill, { backgroundColor: colors.unpaidBg }]}>
+                                <DoodleIcon name="flower" size={11} color={colors.unpaidText} />
+                                <Text style={[styles.amountPillText, { color: colors.unpaidText }]}>
+                                  未払い
+                                </Text>
+                              </View>
+                            ) : null}
+                            {matchingVisitorPayment ? (
+                              <View style={[styles.amountPill, { backgroundColor: colors.visitorBg }]}>
+                                <DoodleIcon name="flower" size={11} color={colors.visitorText} />
+                                <Text style={[styles.amountPillText, { color: colors.visitorText }]}>
+                                  {formatYen(matchingVisitorPayment.amount)}
+                                </Text>
+                              </View>
+                            ) : null}
+                            {extraPayments.map((p) => (
+                              <View
+                                key={p.id}
                                 style={[
-                                  styles.amountPillText,
+                                  styles.amountPill,
                                   {
-                                    color:
-                                      p.type === "MONTHLY"
-                                        ? colors.monthlyText
-                                        : colors.visitorText,
+                                    backgroundColor:
+                                      p.type === "MONTHLY" ? colors.monthlyBg : colors.visitorBg,
                                   },
                                 ]}
                               >
-                                {formatYen(p.amount)}
-                              </Text>
-                            </View>
-                          ))
+                                <DoodleIcon
+                                  name={p.type === "MONTHLY" ? "leaf" : "flower"}
+                                  size={11}
+                                  color={p.type === "MONTHLY" ? colors.monthlyText : colors.visitorText}
+                                />
+                                <Text
+                                  style={[
+                                    styles.amountPillText,
+                                    {
+                                      color:
+                                        p.type === "MONTHLY" ? colors.monthlyText : colors.visitorText,
+                                    },
+                                  ]}
+                                >
+                                  {formatYen(p.amount)}
+                                </Text>
+                              </View>
+                            ))}
+                          </>
                         )}
                       </View>
                     );

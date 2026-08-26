@@ -8,52 +8,48 @@ import {
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSQLiteContext } from "expo-sqlite";
 import {
-  createPaymentForMember,
-  deletePayment,
-  getFeeAt,
+  listAttendanceForDate,
   listMembers,
-  listPaymentsForDate,
+  removeAttendance,
+  setAttendance,
   type Member,
-  type PaymentWithMember,
+  type PaymentType,
 } from "@/lib/db";
-import { formatDate, formatYen } from "@/lib/format";
+import { todayIso } from "@/lib/format";
 import { colors } from "@/lib/theme";
 import { EmptyState, Screen } from "@/components/ui";
 import { AppButton } from "@/components/AppButton";
 import { AppCheckbox } from "@/components/AppCheckbox";
+import { DateField } from "@/components/DateField";
 
 type RowState = { checked: boolean; isVisitor: boolean };
 
 export default function AttendanceScreen() {
-  const { date } = useLocalSearchParams<{ date: string }>();
+  const params = useLocalSearchParams<{ date?: string }>();
   const db = useSQLiteContext();
   const router = useRouter();
 
+  const [date, setDate] = useState(params.date || todayIso());
   const [members, setMembers] = useState<Member[]>([]);
-  const [existing, setExisting] = useState<PaymentWithMember[]>([]);
-  const [fee, setFee] = useState(0);
   const [rows, setRows] = useState<Record<string, RowState>>({});
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  useFocusEffect(
-    useCallback(() => {
-      if (!date) return;
+  const load = useCallback(
+    (forDate: string) => {
       let cancelled = false;
-      Promise.all([listMembers(db), listPaymentsForDate(db, date), getFeeAt(db, date)]).then(
-        ([m, payments, standardFee]) => {
+      Promise.all([listMembers(db), listAttendanceForDate(db, forDate)]).then(
+        ([m, attendance]) => {
           if (cancelled) return;
           const initial: Record<string, RowState> = {};
           for (const member of m) {
-            const payment = payments.find((p) => p.memberId === member.id);
+            const a = attendance.find((x) => x.memberId === member.id);
             initial[member.id] = {
-              checked: !!payment,
-              isVisitor: payment?.type === "VISITOR",
+              checked: !!a,
+              isVisitor: a?.type === "VISITOR",
             };
           }
           setMembers(m);
-          setExisting(payments);
-          setFee(standardFee);
           setRows(initial);
           setLoaded(true);
         },
@@ -61,11 +57,24 @@ export default function AttendanceScreen() {
       return () => {
         cancelled = true;
       };
-    }, [db, date]),
+    },
+    [db],
   );
+
+  useFocusEffect(useCallback(() => load(date), [load, date]));
+
+  function handleDateChange(newDate: string) {
+    setDate(newDate);
+    setLoaded(false);
+    router.setParams({ date: newDate });
+  }
 
   const checkedCount = useMemo(
     () => Object.values(rows).filter((r) => r.checked).length,
+    [rows],
+  );
+  const visitorCount = useMemo(
+    () => Object.values(rows).filter((r) => r.checked && r.isVisitor).length,
     [rows],
   );
 
@@ -90,39 +99,16 @@ export default function AttendanceScreen() {
   }
 
   async function handleSave() {
-    if (!date) return;
     setSaving(true);
     try {
       const ops: Promise<void>[] = [];
       for (const member of members) {
         const state = rows[member.id] ?? { checked: false, isVisitor: false };
-        const currentPayment = existing.find((p) => p.memberId === member.id);
-        const desiredType = state.isVisitor ? "VISITOR" : "MONTHLY";
-
         if (state.checked) {
-          if (!currentPayment) {
-            ops.push(
-              createPaymentForMember(db, {
-                memberId: member.id,
-                date,
-                amount: fee,
-                type: desiredType,
-              }),
-            );
-          } else if (currentPayment.type !== desiredType) {
-            ops.push(
-              deletePayment(db, currentPayment.id).then(() =>
-                createPaymentForMember(db, {
-                  memberId: member.id,
-                  date,
-                  amount: fee,
-                  type: desiredType,
-                }),
-              ),
-            );
-          }
-        } else if (currentPayment) {
-          ops.push(deletePayment(db, currentPayment.id));
+          const type: PaymentType = state.isVisitor ? "VISITOR" : "MONTHLY";
+          ops.push(setAttendance(db, { memberId: member.id, date, type }));
+        } else {
+          ops.push(removeAttendance(db, { memberId: member.id, date }));
         }
       }
       await Promise.all(ops);
@@ -132,27 +118,30 @@ export default function AttendanceScreen() {
     }
   }
 
-  if (!loaded) return null;
-
   return (
     <Screen>
-      <Stack.Screen
-        options={{ title: date ? `${formatDate(date)} 出欠` : "出欠確認" }}
-      />
+      <Stack.Screen options={{ title: "出欠確認" }} />
       <FlatList
         contentContainerStyle={styles.wrap}
-        data={members}
+        data={loaded ? members : []}
         keyExtractor={(m) => m.id}
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
           <View style={styles.header}>
-            <Text style={styles.title}>{date ? formatDate(date) : ""}</Text>
+            <DateField testID="attendance-date" label="日付" value={date} onChange={handleDateChange} />
             <Text style={styles.subtitle}>
-              チェックした人は月謝 {formatYen(fee)}
-              として記録されます。ビジターとして参加した人は「ビジター」を選んでください。
+              出欠を記録します。支払いの記録は「入力」タブから別途行ってください。
             </Text>
-            <Text style={styles.countText}>{checkedCount}人 選択中</Text>
-            {members.length === 0 ? (
+            <Text style={styles.subtitleNote}>
+              ビジターとして出席した人は、その場で支払い義務が発生します（未払いとして会計表に表示されます）。
+            </Text>
+            <View style={styles.countRow}>
+              <Text style={styles.countText}>{checkedCount}人 出席</Text>
+              {visitorCount > 0 ? (
+                <Text style={styles.countTextVisitor}>うちビジター {visitorCount}人</Text>
+              ) : null}
+            </View>
+            {loaded && members.length === 0 ? (
               <EmptyState>
                 まだメンバーが登録されていません。「メンバー」タブから追加してください。
               </EmptyState>
@@ -199,7 +188,7 @@ export default function AttendanceScreen() {
         }}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
         ListFooterComponent={
-          members.length > 0 ? (
+          loaded && members.length > 0 ? (
             <View style={styles.footer}>
               <AppButton
                 testID="attendance-save"
@@ -218,9 +207,11 @@ export default function AttendanceScreen() {
 const styles = StyleSheet.create({
   wrap: { padding: 20, paddingBottom: 48 },
   header: { gap: 8, marginBottom: 8 },
-  title: { fontSize: 22, fontWeight: "800", color: colors.text },
-  subtitle: { fontSize: 13, color: colors.textMuted, lineHeight: 19 },
-  countText: { fontSize: 13, color: colors.green, fontWeight: "700", marginTop: 2 },
+  subtitle: { fontSize: 13, color: colors.textMuted, lineHeight: 19, marginTop: 6 },
+  subtitleNote: { fontSize: 12, color: colors.unpaidText, lineHeight: 18 },
+  countRow: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 4 },
+  countText: { fontSize: 13, color: colors.green, fontWeight: "700" },
+  countTextVisitor: { fontSize: 13, color: colors.unpaidText, fontWeight: "700" },
   row: {
     flexDirection: "row",
     alignItems: "center",
