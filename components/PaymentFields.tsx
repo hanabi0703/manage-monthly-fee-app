@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { colors } from "@/lib/theme";
+import { formatYen } from "@/lib/format";
 import { PracticeDaySelectField } from "@/components/PracticeDaySelectField";
-import { AmountSelectField, type AmountOption } from "@/components/AmountSelectField";
 import type { PaymentType, PracticeDay } from "@/lib/db";
 
 type Props = {
@@ -9,10 +9,7 @@ type Props = {
   date: string;
   onDateChange: (value: string) => void;
   practiceDays: PracticeDay[];
-  amountOption: AmountOption | null;
-  onAmountOptionChange: (value: AmountOption) => void;
   amount: string;
-  onAmountChange: (value: string) => void;
   type: PaymentType;
   onTypeChange: (value: PaymentType) => void;
   testIDs?: {
@@ -28,10 +25,7 @@ export function PaymentFields({
   date,
   onDateChange,
   practiceDays,
-  amountOption,
-  onAmountOptionChange,
   amount,
-  onAmountChange,
   type,
   onTypeChange,
   testIDs,
@@ -45,13 +39,12 @@ export function PaymentFields({
         onChange={onDateChange}
         practiceDays={practiceDays}
       />
-      <AmountSelectField
-        testID={testIDs?.amount}
-        option={amountOption}
-        onOptionChange={onAmountOptionChange}
-        amount={amount}
-        onAmountChange={onAmountChange}
-      />
+      <View style={styles.field}>
+        <Text style={styles.label}>もらった金額</Text>
+        <View testID={testIDs?.amount} style={styles.amountDisplay}>
+          <Text style={styles.amountText}>{formatYen(Number(amount || 0))}</Text>
+        </View>
+      </View>
       <View style={styles.field}>
         <Text style={styles.label}>区分</Text>
         <View style={styles.typeRow}>
@@ -86,6 +79,16 @@ export function PaymentFields({
 const styles = StyleSheet.create({
   field: { gap: 8 },
   label: { fontSize: 15, fontWeight: "700", color: colors.text },
+  amountDisplay: {
+    minHeight: 54,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+    backgroundColor: colors.bg,
+    justifyContent: "center",
+  },
+  amountText: { fontSize: 17, color: colors.text, fontWeight: "700" },
   typeRow: { flexDirection: "row", gap: 10 },
   typeButton: {
     flex: 1,

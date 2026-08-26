@@ -177,6 +177,10 @@ export async function getMember(
   return row ? { id: row.id, name: row.name, createdAt: row.created_at } : null;
 }
 
+export async function deleteMember(db: SQLiteDatabase, id: string): Promise<void> {
+  await db.runAsync("DELETE FROM members WHERE id = ?", id);
+}
+
 export async function listPayments(
   db: SQLiteDatabase,
 ): Promise<PaymentWithMember[]> {

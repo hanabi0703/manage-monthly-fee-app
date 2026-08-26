@@ -6,21 +6,22 @@ import {
   createPaymentForMember,
   getFeeForMonth,
   listMembers,
+  listPaymentsForMember,
   listPracticeDays,
   type Member,
   type PaymentType,
   type PracticeDay,
 } from "@/lib/db";
-import { currentMonthIso, formatYen, shiftMonth, todayIso } from "@/lib/format";
+import { currentMonthIso, formatDate, formatYen, shiftMonth, todayIso } from "@/lib/format";
 import { colors } from "@/lib/theme";
 import { Screen } from "@/components/ui";
 import { AppCard } from "@/components/AppCard";
 import { AppButton } from "@/components/AppButton";
 import { MemberSelectField } from "@/components/MemberSelectField";
 import { PaymentFields } from "@/components/PaymentFields";
-import { AMOUNT_PRESETS, type AmountOption } from "@/components/AmountSelectField";
 
 const PRACTICE_DAY_HISTORY_MONTHS = 12;
+const VISITOR_FEE = 1000;
 
 function selectableDates(days: PracticeDay[]): PracticeDay[] {
   const cutoff = `${shiftMonth(currentMonthIso(), -(PRACTICE_DAY_HISTORY_MONTHS - 1))}-01`;
@@ -44,7 +45,6 @@ export default function EntryScreen() {
 
   const [date, setDate] = useState("");
   const [memberId, setMemberId] = useState("");
-  const [amountOption, setAmountOption] = useState<AmountOption | null>(null);
   const [amount, setAmount] = useState("");
   const [type, setType] = useState<PaymentType>("MONTHLY");
   const [members, setMembers] = useState<Member[]>([]);
@@ -73,38 +73,19 @@ export default function EntryScreen() {
     }, [db]),
   );
 
-  // 月謝を選択している間は、日付（の月）に応じた月謝額をデフォルトとして入力する。
+  // もらう金額は選択できない: 月謝ならその月の月謝額、ビジターなら固定1,000円。
   useEffect(() => {
-    if (type !== "MONTHLY" || !date) return;
+    if (!date) return;
     let cancelled = false;
     getFeeForMonth(db, date.slice(0, 7)).then((fee) => {
       if (cancelled) return;
       setCurrentFee(fee);
-      const feeStr = String(fee);
-      if ((AMOUNT_PRESETS as readonly string[]).includes(feeStr)) {
-        setAmountOption(feeStr as AmountOption);
-      } else {
-        setAmountOption("OTHER");
-      }
-      setAmount(feeStr);
+      setAmount(type === "MONTHLY" ? String(fee) : String(VISITOR_FEE));
     });
     return () => {
       cancelled = true;
     };
   }, [db, date, type]);
-
-  function handleTypeChange(next: PaymentType) {
-    setType(next);
-    if (next === "VISITOR") {
-      setAmountOption(null);
-      setAmount("");
-    }
-  }
-
-  function handleAmountOptionChange(option: AmountOption) {
-    setAmountOption(option);
-    setAmount(option === "OTHER" ? "" : option);
-  }
 
   const canSubmit = date.length === 10 && memberId.length > 0 && amount.length > 0;
 
@@ -120,6 +101,14 @@ export default function EntryScreen() {
     }
     setSubmitting(true);
     try {
+      const existing = await listPaymentsForMember(db, memberId);
+      if (existing.some((p) => p.date === date)) {
+        Alert.alert(
+          "支払い済みです",
+          `${formatDate(date)}はすでにこのメンバーの支払いが記録されています。`,
+        );
+        return;
+      }
       await createPaymentForMember(db, { memberId, date, amount: amountNum, type });
       setMemberId("");
       setType("MONTHLY");
@@ -150,12 +139,9 @@ export default function EntryScreen() {
             date={date}
             onDateChange={setDate}
             practiceDays={practiceDays}
-            amountOption={amountOption}
-            onAmountOptionChange={handleAmountOptionChange}
             amount={amount}
-            onAmountChange={setAmount}
             type={type}
-            onTypeChange={handleTypeChange}
+            onTypeChange={setType}
             testIDs={{
               date: "entry-date",
               amount: "entry-amount",

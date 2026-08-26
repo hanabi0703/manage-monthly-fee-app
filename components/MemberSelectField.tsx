@@ -28,51 +28,55 @@ export function MemberSelectField({ label, value, onChange, members, testID }: P
   }
 
   return (
-    <View style={styles.field}>
+    <View style={[styles.field, open && styles.fieldOpen]}>
       <Text style={styles.label}>{label}</Text>
-      <Pressable
-        testID={testID}
-        style={styles.input}
-        onPress={() => setOpen((o) => !o)}
-      >
-        <Text style={selected ? styles.valueText : styles.placeholder}>
-          {selected ? selected.name : "選択してください"}
-        </Text>
-        <Text style={styles.chevron}>{open ? "▲" : "▼"}</Text>
-      </Pressable>
-      {open ? (
-        <View style={styles.dropdown}>
-          <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled">
-            {members.map((m) => (
-              <Pressable
-                key={m.id}
-                testID={`${testID}-option-${m.id}`}
-                style={styles.optionRow}
-                onPress={() => {
-                  onChange(m.id);
-                  setOpen(false);
-                }}
-              >
-                <Text
-                  style={[
-                    styles.optionText,
-                    m.id === value && styles.optionTextSelected,
-                  ]}
+      <View style={styles.anchor}>
+        <Pressable
+          testID={testID}
+          style={styles.input}
+          onPress={() => setOpen((o) => !o)}
+        >
+          <Text style={selected ? styles.valueText : styles.placeholder}>
+            {selected ? selected.name : "選択してください"}
+          </Text>
+          <Text style={styles.chevron}>{open ? "▲" : "▼"}</Text>
+        </Pressable>
+        {open ? (
+          <View style={styles.dropdown}>
+            <ScrollView nestedScrollEnabled keyboardShouldPersistTaps="handled">
+              {members.map((m) => (
+                <Pressable
+                  key={m.id}
+                  testID={`${testID}-option-${m.id}`}
+                  style={styles.optionRow}
+                  onPress={() => {
+                    onChange(m.id);
+                    setOpen(false);
+                  }}
                 >
-                  {m.name}
-                </Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-        </View>
-      ) : null}
+                  <Text
+                    style={[
+                      styles.optionText,
+                      m.id === value && styles.optionTextSelected,
+                    ]}
+                  >
+                    {m.name}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        ) : null}
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   field: { gap: 8 },
+  fieldOpen: { zIndex: 10 },
   label: { fontSize: 15, fontWeight: "700", color: colors.text },
+  anchor: { position: "relative" },
   input: {
     minHeight: 54,
     paddingHorizontal: 16,
@@ -92,12 +96,22 @@ const styles = StyleSheet.create({
   chevron: { fontSize: 12, color: colors.textMuted },
   hint: { fontSize: 12, color: colors.textMuted, lineHeight: 18 },
   dropdown: {
+    position: "absolute",
+    top: "100%",
+    left: 0,
+    right: 0,
+    marginTop: 8,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: 14,
     backgroundColor: colors.card,
     overflow: "hidden",
     maxHeight: 260,
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 6,
   },
   optionRow: {
     paddingVertical: 13,

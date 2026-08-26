@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { Alert, StyleSheet, View } from "react-native";
 import { useSQLiteContext } from "expo-sqlite";
-import { getMember, updateMemberName } from "@/lib/db";
+import { deleteMember, getMember, updateMemberName } from "@/lib/db";
 import { Screen, ScreenTitle } from "@/components/ui";
 import { AppCard } from "@/components/AppCard";
 import { AppButton } from "@/components/AppButton";
@@ -15,6 +15,7 @@ export default function EditMemberScreen() {
   const [name, setName] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -35,6 +36,30 @@ export default function EditMemberScreen() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function handleDelete() {
+    if (!id) return;
+    Alert.alert(
+      "メンバーを削除しますか？",
+      "支払い履歴・出欠記録もすべて削除され、元に戻せません。",
+      [
+        { text: "キャンセル", style: "cancel" },
+        {
+          text: "削除する",
+          style: "destructive",
+          onPress: async () => {
+            setDeleting(true);
+            try {
+              await deleteMember(db, id);
+              router.replace("/members");
+            } finally {
+              setDeleting(false);
+            }
+          },
+        },
+      ],
+    );
   }
 
   if (!loaded) return null;
@@ -58,12 +83,19 @@ export default function EditMemberScreen() {
             disabled={!name.trim() || submitting}
           />
         </AppCard>
+        <AppButton
+          testID="edit-member-delete"
+          title={deleting ? "削除中..." : "このメンバーを削除する"}
+          variant="outline"
+          onPress={handleDelete}
+          disabled={deleting}
+        />
       </View>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { padding: 20 },
+  wrap: { padding: 20, gap: 16 },
   form: { gap: 20 },
 });
