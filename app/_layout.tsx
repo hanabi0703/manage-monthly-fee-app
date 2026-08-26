@@ -58,6 +58,10 @@ export default function RootLayout() {
               name="practice-days"
               options={{ title: "練習日設定" }}
             />
+            <Stack.Screen
+              name="attendance/[date]"
+              options={{ title: "出欠確認" }}
+            />
           </Stack>
         </SQLiteProvider>
       </Suspense>

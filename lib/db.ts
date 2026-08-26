@@ -198,6 +198,36 @@ export async function listPaymentsForMember(
   }));
 }
 
+export async function listPaymentsForDate(
+  db: SQLiteDatabase,
+  date: string,
+): Promise<PaymentWithMember[]> {
+  const rows = await db.getAllAsync<{
+    id: string;
+    date: string;
+    member_id: string;
+    amount: number;
+    type: PaymentType;
+    created_at: string;
+    member_name: string;
+  }>(
+    `SELECT p.id, p.date, p.member_id, p.amount, p.type, p.created_at, m.name as member_name
+     FROM payments p JOIN members m ON m.id = p.member_id
+     WHERE p.date = ?
+     ORDER BY m.name ASC`,
+    date,
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    date: r.date,
+    memberId: r.member_id,
+    amount: r.amount,
+    type: r.type,
+    createdAt: r.created_at,
+    memberName: r.member_name,
+  }));
+}
+
 export async function deletePayment(
   db: SQLiteDatabase,
   id: string,
@@ -240,6 +270,11 @@ export async function addFeeSetting(
 export async function getCurrentFee(db: SQLiteDatabase): Promise<number> {
   const settings = await listFeeSettings(db);
   return standardFeeAt(todayIso(), settings);
+}
+
+export async function getFeeAt(db: SQLiteDatabase, date: string): Promise<number> {
+  const settings = await listFeeSettings(db);
+  return standardFeeAt(date, settings);
 }
 
 export async function updateMemberName(

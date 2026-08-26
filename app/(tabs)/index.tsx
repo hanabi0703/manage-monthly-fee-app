@@ -12,10 +12,11 @@ import {
   type PaymentWithMember,
 } from "@/lib/db";
 import { standardFeeAt } from "@/lib/balance";
-import { currentMonthIso, formatMonthLabel, formatShortDate, formatYen, shiftMonth } from "@/lib/format";
+import { currentMonthIso, formatMonthLabel, formatShortDate, formatYen, shiftMonth, todayIso } from "@/lib/format";
 import { colors } from "@/lib/theme";
 import { EmptyState, Screen, ScreenTitle } from "@/components/ui";
 import { AppCard } from "@/components/AppCard";
+import { AppButton } from "@/components/AppButton";
 import { DoodleIcon } from "@/components/DoodleIcon";
 
 const MEMBER_COL_WIDTH = 112;
@@ -129,6 +130,15 @@ export default function DashboardScreen() {
           </Pressable>
         </AppCard>
 
+        <View style={styles.attendanceButtonWrap}>
+          <AppButton
+            testID="attendance-today-button"
+            title="✓ 今日の出欠を取る"
+            variant="green"
+            onPress={() => router.push(`/attendance/${todayIso()}`)}
+          />
+        </View>
+
         {loaded && members.length === 0 ? (
           <EmptyState>まだメンバーが登録されていません。「入力」タブから記録してください。</EmptyState>
         ) : loaded && dateKeys.length === 0 ? (
@@ -143,9 +153,14 @@ export default function DashboardScreen() {
                   <Text style={styles.headText}>メンバー</Text>
                 </View>
                 {dateKeys.map((d) => (
-                  <View key={d} style={[styles.cell, styles.dateCol, styles.headCell]}>
-                    <Text style={styles.headText}>{formatShortDate(d)}</Text>
-                  </View>
+                  <Pressable
+                    key={d}
+                    testID={`accounting-date-header-${d}`}
+                    style={[styles.cell, styles.dateCol, styles.headCell]}
+                    onPress={() => router.push(`/attendance/${d}`)}
+                  >
+                    <Text style={styles.headTextLink}>{formatShortDate(d)}</Text>
+                  </Pressable>
                 ))}
                 <View style={[styles.cell, styles.totalCol, styles.headCell]}>
                   <Text style={styles.headText}>合計</Text>
@@ -257,6 +272,7 @@ const styles = StyleSheet.create({
   },
   feeText: { color: colors.green, fontSize: 14, fontWeight: "700" },
   feeLinkChevron: { color: colors.green, fontSize: 16, fontWeight: "700" },
+  attendanceButtonWrap: { marginBottom: 18 },
   table: { borderWidth: 1, borderColor: colors.border, borderRadius: 16, overflow: "hidden" },
   headRow: { flexDirection: "row", backgroundColor: colors.tableHeadBg },
   row: { flexDirection: "row", borderTopWidth: 1, borderTopColor: colors.border },
@@ -274,6 +290,7 @@ const styles = StyleSheet.create({
   dateCol: { width: DATE_COL_WIDTH },
   totalCol: { width: TOTAL_COL_WIDTH, backgroundColor: colors.greenLight },
   headText: { fontWeight: "700", color: colors.textMuted, fontSize: 12 },
+  headTextLink: { fontWeight: "700", color: colors.green, fontSize: 12, textDecorationLine: "underline" },
   nameCell: { fontWeight: "700", color: colors.text, fontSize: 13 },
   totalCell: { fontWeight: "800", color: colors.monthlyText, fontSize: 13 },
   dash: { color: colors.disabled, fontSize: 14 },
