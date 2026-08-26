@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { useFocusEffect, useRouter } from "expo-router";
-import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSQLiteContext } from "expo-sqlite";
 import { getFeeForMonths, listMembers, listPayments, upsertMemberByName } from "@/lib/db";
 import { computeBalance } from "@/lib/balance";
@@ -66,78 +66,71 @@ export default function MembersScreen() {
 
   return (
     <Screen>
-      <FlatList
-        contentContainerStyle={styles.list}
-        data={rows}
-        keyExtractor={(r) => r.id}
-        showsVerticalScrollIndicator={false}
-        ListHeaderComponent={
-          <View style={styles.headerBlock}>
-            <ScreenTitle
-              title="メンバー一覧"
-              subtitle="繰越金・未払金の状況を確認できます。"
-            />
-            <SectionLabel>メンバーを追加</SectionLabel>
-            <AppCard style={styles.addForm}>
-              <AppInput
-                testID="new-member-name"
-                label="名前"
-                value={newName}
-                onChangeText={setNewName}
-                placeholder="例：山田太郎"
-              />
-              <AppButton
-                testID="new-member-submit"
-                title={adding ? "追加中..." : "追加する"}
-                onPress={handleAddMember}
-                disabled={!newName.trim() || adding}
-              />
-            </AppCard>
-            {loaded && rows.length === 0 ? (
-              <EmptyState>まだメンバーが登録されていません。</EmptyState>
-            ) : null}
-          </View>
-        }
-        renderItem={({ item }) => (
-          <Pressable
-            testID={`member-row-${item.id}`}
-            onPress={() => router.push(`/members/${item.id}`)}
-          >
-            <AppCard style={styles.row}>
-              <View style={styles.rowLeft}>
-                <DoodleIcon name="members" size={22} color={colors.tabInactive} />
-                <View>
-                  <Text style={styles.name}>{item.name}</Text>
-                  {item.balance < 0 ? (
-                    <Badge label={`未払金 ${formatYen(Math.abs(item.balance))}`} tone="unpaid" />
-                  ) : item.balance > 0 ? (
-                    <Badge label={`繰越金 ${formatYen(item.balance)}`} tone="credit" />
-                  ) : (
-                    <Badge label="精算済み" tone="neutral" />
-                  )}
+      <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
+        <ScreenTitle title="メンバー一覧" subtitle="繰越金・未払金の状況を確認できます。" />
+        <SectionLabel>メンバーを追加</SectionLabel>
+        <AppCard style={styles.addForm}>
+          <AppInput
+            testID="new-member-name"
+            label="名前"
+            value={newName}
+            onChangeText={setNewName}
+            placeholder="例：山田太郎"
+          />
+          <AppButton
+            testID="new-member-submit"
+            title={adding ? "追加中..." : "追加する"}
+            onPress={handleAddMember}
+            disabled={!newName.trim() || adding}
+          />
+        </AppCard>
+        {loaded && rows.length === 0 ? (
+          <EmptyState>まだメンバーが登録されていません。</EmptyState>
+        ) : (
+          <AppCard style={styles.listCard}>
+            {rows.map((item, index) => (
+              <Pressable
+                key={item.id}
+                testID={`member-row-${item.id}`}
+                onPress={() => router.push(`/members/${item.id}`)}
+                style={[styles.row, index > 0 && styles.rowDivider]}
+              >
+                <View style={styles.rowLeft}>
+                  <DoodleIcon name="members" size={22} color={colors.tabInactive} />
+                  <View>
+                    <Text style={styles.name}>{item.name}</Text>
+                    {item.balance < 0 ? (
+                      <Badge label={`未払金 ${formatYen(Math.abs(item.balance))}`} tone="unpaid" />
+                    ) : item.balance > 0 ? (
+                      <Badge label={`繰越金 ${formatYen(item.balance)}`} tone="credit" />
+                    ) : (
+                      <Badge label="精算済み" tone="neutral" />
+                    )}
+                  </View>
                 </View>
-              </View>
-              <Text style={styles.chevron}>›</Text>
-            </AppCard>
-          </Pressable>
+                <Text style={styles.chevron}>›</Text>
+              </Pressable>
+            ))}
+          </AppCard>
         )}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
-      />
+      </ScrollView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  headerBlock: { gap: 12, marginBottom: 4 },
+  list: { padding: 20, paddingTop: 4, paddingBottom: 48, gap: 12 },
   addForm: { gap: 16, marginBottom: 8 },
-  list: { padding: 20, paddingTop: 4 },
+  listCard: { padding: 0, overflow: "hidden" },
   row: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    paddingVertical: 14,
+    paddingHorizontal: 18,
   },
+  rowDivider: { borderTopWidth: 1, borderTopColor: colors.border },
   rowLeft: { flexDirection: "row", alignItems: "center", gap: 14 },
-  separator: { height: 12 },
   name: { fontSize: 18, fontWeight: "700", color: colors.text, marginBottom: 8 },
   chevron: { fontSize: 26, color: colors.textMuted },
 });

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Stack,
   useFocusEffect,
@@ -11,60 +11,100 @@ import {
   listAttendanceForDate,
   listMemberMonthStatusForMonth,
   listMembers,
+  listPracticeDays,
   removeAttendance,
   setAttendance,
   type Member,
   type PaymentType,
+  type PracticeDay,
 } from "@/lib/db";
 import { todayIso } from "@/lib/format";
 import { colors } from "@/lib/theme";
 import { EmptyState, Screen } from "@/components/ui";
 import { AppButton } from "@/components/AppButton";
 import { AppCheckbox } from "@/components/AppCheckbox";
-import { DateField } from "@/components/DateField";
+import { PracticeDaySelectField } from "@/components/PracticeDaySelectField";
+
+function pickNearestDate(days: PracticeDay[], today: string): string {
+  if (days.length === 0) return "";
+  const todayTime = Date.parse(today);
+  let best = days[0].date;
+  let bestDiff = Math.abs(Date.parse(days[0].date) - todayTime);
+  for (const d of days) {
+    const diff = Math.abs(Date.parse(d.date) - todayTime);
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      best = d.date;
+    }
+  }
+  return best;
+}
 
 export default function AttendanceScreen() {
   const params = useLocalSearchParams<{ date?: string }>();
   const db = useSQLiteContext();
   const router = useRouter();
 
-  const [date, setDate] = useState(params.date || todayIso());
+  const [date, setDate] = useState("");
   const [members, setMembers] = useState<Member[]>([]);
+  const [practiceDays, setPracticeDays] = useState<PracticeDay[]>([]);
   const [memberStatus, setMemberStatus] = useState<Record<string, PaymentType>>({});
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  const load = useCallback(
-    (forDate: string) => {
+  const didInit = useRef(false);
+
+  useFocusEffect(
+    useCallback(() => {
       let cancelled = false;
-      Promise.all([
-        listMembers(db),
-        listAttendanceForDate(db, forDate),
-        listMemberMonthStatusForMonth(db, forDate.slice(0, 7)),
-      ]).then(([m, attendance, statusMap]) => {
+      listPracticeDays(db).then((days) => {
         if (cancelled) return;
-        const initial: Record<string, boolean> = {};
-        for (const member of m) {
-          initial[member.id] = attendance.some((a) => a.memberId === member.id);
+        setPracticeDays(days);
+        if (!didInit.current) {
+          didInit.current = true;
+          const initial =
+            params.date && days.some((d) => d.date === params.date)
+              ? params.date
+              : pickNearestDate(days, todayIso());
+          setDate(initial);
         }
-        setMembers(m);
-        setChecked(initial);
-        setMemberStatus(statusMap);
-        setLoaded(true);
       });
       return () => {
         cancelled = true;
       };
-    },
-    [db],
+    }, [db, params.date]),
   );
 
-  useFocusEffect(useCallback(() => load(date), [load, date]));
+  useEffect(() => {
+    if (!date) {
+      setLoaded(true);
+      return;
+    }
+    let cancelled = false;
+    setLoaded(false);
+    Promise.all([
+      listMembers(db),
+      listAttendanceForDate(db, date),
+      listMemberMonthStatusForMonth(db, date.slice(0, 7)),
+    ]).then(([m, attendance, statusMap]) => {
+      if (cancelled) return;
+      const initial: Record<string, boolean> = {};
+      for (const member of m) {
+        initial[member.id] = attendance.some((a) => a.memberId === member.id);
+      }
+      setMembers(m);
+      setChecked(initial);
+      setMemberStatus(statusMap);
+      setLoaded(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [db, date]);
 
   function handleDateChange(newDate: string) {
     setDate(newDate);
-    setLoaded(false);
     router.setParams({ date: newDate });
   }
 
@@ -111,7 +151,13 @@ export default function AttendanceScreen() {
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
           <View style={styles.header}>
-            <DateField testID="attendance-date" label="日付" value={date} onChange={handleDateChange} />
+            <PracticeDaySelectField
+              testID="attendance-date"
+              label="日付"
+              value={date}
+              onChange={handleDateChange}
+              practiceDays={practiceDays}
+            />
             <Text style={styles.subtitle}>
               出欠を記録します。支払いの記録は「入力」タブから別途行ってください。
             </Text>
@@ -124,7 +170,7 @@ export default function AttendanceScreen() {
                 <Text style={styles.countTextVisitor}>うちビジター {visitorCheckedCount}人</Text>
               ) : null}
             </View>
-            {loaded && members.length === 0 ? (
+            {loaded && date && members.length === 0 ? (
               <EmptyState>
                 まだメンバーが登録されていません。「メンバー」タブから追加してください。
               </EmptyState>

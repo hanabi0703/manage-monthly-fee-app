@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect } from "expo-router";
 import { Alert, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSQLiteContext } from "expo-sqlite";
 import {
@@ -41,7 +41,6 @@ function pickDefaultDate(days: PracticeDay[]): string {
 
 export default function EntryScreen() {
   const db = useSQLiteContext();
-  const router = useRouter();
 
   const [date, setDate] = useState("");
   const [memberId, setMemberId] = useState("");
@@ -51,6 +50,7 @@ export default function EntryScreen() {
   const [practiceDays, setPracticeDays] = useState<PracticeDay[]>([]);
   const [currentFee, setCurrentFee] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  const [feedback, setFeedback] = useState<string | null>(null);
 
   const didInit = useRef(false);
 
@@ -110,12 +110,18 @@ export default function EntryScreen() {
         return;
       }
       await createPaymentForMember(db, { memberId, date, amount: amountNum, type });
+      const memberName = members.find((m) => m.id === memberId)?.name ?? "";
+      setFeedback(`✓ ${memberName}さんの支払い（${formatYen(amountNum)}）を登録しました`);
       setMemberId("");
       setType("MONTHLY");
-      router.push("/");
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function handleMemberChange(id: string) {
+    setMemberId(id);
+    setFeedback(null);
   }
 
   return (
@@ -132,7 +138,7 @@ export default function EntryScreen() {
             testID="entry-member-select"
             label="メンバーの名前"
             value={memberId}
-            onChange={setMemberId}
+            onChange={handleMemberChange}
             members={members}
           />
           <PaymentFields
@@ -155,6 +161,11 @@ export default function EntryScreen() {
             onPress={handleSubmit}
             disabled={!canSubmit || submitting}
           />
+          {feedback ? (
+            <Text testID="entry-feedback" style={styles.feedbackText}>
+              {feedback}
+            </Text>
+          ) : null}
         </AppCard>
       </ScrollView>
     </Screen>
@@ -168,4 +179,10 @@ const styles = StyleSheet.create({
   priceLine: { fontSize: 15, color: colors.textMuted },
   priceValue: { color: colors.green, fontWeight: "700" },
   form: { gap: 20 },
+  feedbackText: {
+    textAlign: "center",
+    color: colors.green,
+    fontWeight: "700",
+    fontSize: 14,
+  },
 });
