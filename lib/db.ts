@@ -1,18 +1,10 @@
 import type { SQLiteDatabase } from "expo-sqlite";
-import { standardFeeAt } from "@/lib/balance";
 
 export type PaymentType = "MONTHLY" | "VISITOR";
 
 export type Member = {
   id: string;
   name: string;
-  createdAt: string;
-};
-
-export type FeeSetting = {
-  id: string;
-  amount: number;
-  effectiveFrom: string;
   createdAt: string;
 };
 
@@ -37,7 +29,6 @@ export type Attendance = {
   id: string;
   date: string;
   memberId: string;
-  type: PaymentType;
   createdAt: string;
 };
 
@@ -50,10 +41,6 @@ export type MonthSummary = {
 
 function generateId(): string {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
-}
-
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
 }
 
 export async function migrateDbIfNeeded(db: SQLiteDatabase) {
@@ -105,17 +92,41 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
 
     CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance(date);
     CREATE INDEX IF NOT EXISTS idx_attendance_member ON attendance(member_id);
+
+    CREATE TABLE IF NOT EXISTS base_fee_setting (
+      id TEXT PRIMARY KEY NOT NULL,
+      amount INTEGER NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS month_fee_overrides (
+      id TEXT PRIMARY KEY NOT NULL,
+      month TEXT NOT NULL UNIQUE,
+      amount INTEGER NOT NULL,
+      created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS member_month_status (
+      id TEXT PRIMARY KEY NOT NULL,
+      member_id TEXT NOT NULL REFERENCES members(id) ON DELETE CASCADE,
+      month TEXT NOT NULL,
+      type TEXT NOT NULL CHECK (type IN ('MONTHLY', 'VISITOR')),
+      created_at TEXT NOT NULL,
+      UNIQUE (member_id, month)
+    );
   `);
 
-  const existing = await db.getFirstAsync<{ count: number }>(
-    "SELECT COUNT(*) as count FROM fee_settings",
+  const baseFeeCount = await db.getFirstAsync<{ count: number }>(
+    "SELECT COUNT(*) as count FROM base_fee_setting",
   );
-  if ((existing?.count ?? 0) === 0) {
+  if ((baseFeeCount?.count ?? 0) === 0) {
+    const latestLegacyFee = await db.getFirstAsync<{ amount: number }>(
+      "SELECT amount FROM fee_settings ORDER BY effective_from DESC LIMIT 1",
+    );
     await db.runAsync(
-      "INSERT INTO fee_settings (id, amount, effective_from, created_at) VALUES (?, ?, ?, ?)",
+      "INSERT INTO base_fee_setting (id, amount, updated_at) VALUES (?, ?, ?)",
       generateId(),
-      5000,
-      todayIso(),
+      latestLegacyFee?.amount ?? 5000,
       new Date().toISOString(),
     );
   }
@@ -255,46 +266,93 @@ export async function deletePayment(
   await db.runAsync("DELETE FROM payments WHERE id = ?", id);
 }
 
-export async function listFeeSettings(
-  db: SQLiteDatabase,
-): Promise<FeeSetting[]> {
-  const rows = await db.getAllAsync<{
-    id: string;
-    amount: number;
-    effective_from: string;
-    created_at: string;
-  }>(
-    "SELECT id, amount, effective_from, created_at FROM fee_settings ORDER BY effective_from ASC",
+/** The base (default) monthly fee, used for any month without an exception amount. */
+export async function getBaseFee(db: SQLiteDatabase): Promise<number> {
+  const row = await db.getFirstAsync<{ amount: number }>(
+    "SELECT amount FROM base_fee_setting LIMIT 1",
   );
-  return rows.map((r) => ({
-    id: r.id,
-    amount: r.amount,
-    effectiveFrom: r.effective_from,
-    createdAt: r.created_at,
-  }));
+  return row?.amount ?? 0;
 }
 
-export async function addFeeSetting(
+export async function setBaseFee(db: SQLiteDatabase, amount: number): Promise<void> {
+  const row = await db.getFirstAsync<{ id: string }>(
+    "SELECT id FROM base_fee_setting LIMIT 1",
+  );
+  if (row) {
+    await db.runAsync(
+      "UPDATE base_fee_setting SET amount = ?, updated_at = ? WHERE id = ?",
+      amount,
+      new Date().toISOString(),
+      row.id,
+    );
+  } else {
+    await db.runAsync(
+      "INSERT INTO base_fee_setting (id, amount, updated_at) VALUES (?, ?, ?)",
+      generateId(),
+      amount,
+      new Date().toISOString(),
+    );
+  }
+}
+
+/** A month ("YYYY-MM") that has its own exception fee amount, overriding the base fee just for that month. */
+export async function getMonthFeeOverride(
   db: SQLiteDatabase,
-  input: { amount: number; effectiveFrom: string },
+  month: string,
+): Promise<number | null> {
+  const row = await db.getFirstAsync<{ amount: number }>(
+    "SELECT amount FROM month_fee_overrides WHERE month = ?",
+    month,
+  );
+  return row?.amount ?? null;
+}
+
+export async function setMonthFeeOverride(
+  db: SQLiteDatabase,
+  month: string,
+  amount: number,
 ): Promise<void> {
+  await db.runAsync("DELETE FROM month_fee_overrides WHERE month = ?", month);
   await db.runAsync(
-    "INSERT INTO fee_settings (id, amount, effective_from, created_at) VALUES (?, ?, ?, ?)",
+    "INSERT INTO month_fee_overrides (id, month, amount, created_at) VALUES (?, ?, ?, ?)",
     generateId(),
-    input.amount,
-    input.effectiveFrom,
+    month,
+    amount,
     new Date().toISOString(),
   );
 }
 
-export async function getCurrentFee(db: SQLiteDatabase): Promise<number> {
-  const settings = await listFeeSettings(db);
-  return standardFeeAt(todayIso(), settings);
+export async function clearMonthFeeOverride(
+  db: SQLiteDatabase,
+  month: string,
+): Promise<void> {
+  await db.runAsync("DELETE FROM month_fee_overrides WHERE month = ?", month);
 }
 
-export async function getFeeAt(db: SQLiteDatabase, date: string): Promise<number> {
-  const settings = await listFeeSettings(db);
-  return standardFeeAt(date, settings);
+/** The fee that applies for a given month: its exception amount if set, otherwise the base fee. */
+export async function getFeeForMonth(db: SQLiteDatabase, month: string): Promise<number> {
+  const override = await getMonthFeeOverride(db, month);
+  if (override !== null) return override;
+  return getBaseFee(db);
+}
+
+/** Fee-per-month lookup for a set of months, in one round trip (base fee + all overrides). */
+export async function getFeeForMonths(
+  db: SQLiteDatabase,
+  months: string[],
+): Promise<Record<string, number>> {
+  const [base, overrides] = await Promise.all([
+    getBaseFee(db),
+    db.getAllAsync<{ month: string; amount: number }>(
+      "SELECT month, amount FROM month_fee_overrides",
+    ),
+  ]);
+  const overrideMap = new Map(overrides.map((o) => [o.month, o.amount]));
+  const result: Record<string, number> = {};
+  for (const month of months) {
+    result[month] = overrideMap.get(month) ?? base;
+  }
+  return result;
 }
 
 export async function updateMemberName(
@@ -303,6 +361,58 @@ export async function updateMemberName(
   name: string,
 ): Promise<void> {
   await db.runAsync("UPDATE members SET name = ? WHERE id = ?", name.trim(), id);
+}
+
+/**
+ * Whether a member is a monthly-dues payer or a visitor for a given month
+ * ("YYYY-MM"). Decided once at the start of the month; defaults to MONTHLY
+ * when nothing has been set yet.
+ */
+export async function getMemberMonthStatus(
+  db: SQLiteDatabase,
+  memberId: string,
+  month: string,
+): Promise<PaymentType> {
+  const row = await db.getFirstAsync<{ type: PaymentType }>(
+    "SELECT type FROM member_month_status WHERE member_id = ? AND month = ?",
+    memberId,
+    month,
+  );
+  return row?.type ?? "MONTHLY";
+}
+
+export async function listMemberMonthStatusForMonth(
+  db: SQLiteDatabase,
+  month: string,
+): Promise<Record<string, PaymentType>> {
+  const rows = await db.getAllAsync<{ member_id: string; type: PaymentType }>(
+    "SELECT member_id, type FROM member_month_status WHERE month = ?",
+    month,
+  );
+  const result: Record<string, PaymentType> = {};
+  for (const row of rows) {
+    result[row.member_id] = row.type;
+  }
+  return result;
+}
+
+export async function setMemberMonthStatus(
+  db: SQLiteDatabase,
+  input: { memberId: string; month: string; type: PaymentType },
+): Promise<void> {
+  await db.runAsync(
+    "DELETE FROM member_month_status WHERE member_id = ? AND month = ?",
+    input.memberId,
+    input.month,
+  );
+  await db.runAsync(
+    "INSERT INTO member_month_status (id, member_id, month, type, created_at) VALUES (?, ?, ?, ?, ?)",
+    generateId(),
+    input.memberId,
+    input.month,
+    input.type,
+    new Date().toISOString(),
+  );
 }
 
 export async function createPaymentForMember(
@@ -378,17 +488,15 @@ export async function listAttendanceForDate(
     id: string;
     date: string;
     member_id: string;
-    type: PaymentType;
     created_at: string;
   }>(
-    "SELECT id, date, member_id, type, created_at FROM attendance WHERE date = ?",
+    "SELECT id, date, member_id, created_at FROM attendance WHERE date = ?",
     date,
   );
   return rows.map((r) => ({
     id: r.id,
     date: r.date,
     memberId: r.member_id,
-    type: r.type,
     createdAt: r.created_at,
   }));
 }
@@ -398,21 +506,19 @@ export async function listAttendance(db: SQLiteDatabase): Promise<Attendance[]> 
     id: string;
     date: string;
     member_id: string;
-    type: PaymentType;
     created_at: string;
-  }>("SELECT id, date, member_id, type, created_at FROM attendance");
+  }>("SELECT id, date, member_id, created_at FROM attendance");
   return rows.map((r) => ({
     id: r.id,
     date: r.date,
     memberId: r.member_id,
-    type: r.type,
     createdAt: r.created_at,
   }));
 }
 
 export async function setAttendance(
   db: SQLiteDatabase,
-  input: { memberId: string; date: string; type: PaymentType },
+  input: { memberId: string; date: string },
 ): Promise<void> {
   await db.runAsync(
     "DELETE FROM attendance WHERE date = ? AND member_id = ?",
@@ -420,11 +526,12 @@ export async function setAttendance(
     input.memberId,
   );
   await db.runAsync(
-    "INSERT INTO attendance (id, date, member_id, type, created_at) VALUES (?, ?, ?, ?, ?)",
+    // `type` is a vestigial NOT NULL column from an earlier schema; always
+    // written as MONTHLY since attendance no longer carries a type itself.
+    "INSERT INTO attendance (id, date, member_id, type, created_at) VALUES (?, ?, ?, 'MONTHLY', ?)",
     generateId(),
     input.date,
     input.memberId,
-    input.type,
     new Date().toISOString(),
   );
 }

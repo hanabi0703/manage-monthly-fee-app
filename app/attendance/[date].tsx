@@ -9,6 +9,7 @@ import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSQLiteContext } from "expo-sqlite";
 import {
   listAttendanceForDate,
+  listMemberMonthStatusForMonth,
   listMembers,
   removeAttendance,
   setAttendance,
@@ -22,8 +23,6 @@ import { AppButton } from "@/components/AppButton";
 import { AppCheckbox } from "@/components/AppCheckbox";
 import { DateField } from "@/components/DateField";
 
-type RowState = { checked: boolean; isVisitor: boolean };
-
 export default function AttendanceScreen() {
   const params = useLocalSearchParams<{ date?: string }>();
   const db = useSQLiteContext();
@@ -31,29 +30,29 @@ export default function AttendanceScreen() {
 
   const [date, setDate] = useState(params.date || todayIso());
   const [members, setMembers] = useState<Member[]>([]);
-  const [rows, setRows] = useState<Record<string, RowState>>({});
+  const [memberStatus, setMemberStatus] = useState<Record<string, PaymentType>>({});
+  const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(
     (forDate: string) => {
       let cancelled = false;
-      Promise.all([listMembers(db), listAttendanceForDate(db, forDate)]).then(
-        ([m, attendance]) => {
-          if (cancelled) return;
-          const initial: Record<string, RowState> = {};
-          for (const member of m) {
-            const a = attendance.find((x) => x.memberId === member.id);
-            initial[member.id] = {
-              checked: !!a,
-              isVisitor: a?.type === "VISITOR",
-            };
-          }
-          setMembers(m);
-          setRows(initial);
-          setLoaded(true);
-        },
-      );
+      Promise.all([
+        listMembers(db),
+        listAttendanceForDate(db, forDate),
+        listMemberMonthStatusForMonth(db, forDate.slice(0, 7)),
+      ]).then(([m, attendance, statusMap]) => {
+        if (cancelled) return;
+        const initial: Record<string, boolean> = {};
+        for (const member of m) {
+          initial[member.id] = attendance.some((a) => a.memberId === member.id);
+        }
+        setMembers(m);
+        setChecked(initial);
+        setMemberStatus(statusMap);
+        setLoaded(true);
+      });
       return () => {
         cancelled = true;
       };
@@ -70,32 +69,18 @@ export default function AttendanceScreen() {
   }
 
   const checkedCount = useMemo(
-    () => Object.values(rows).filter((r) => r.checked).length,
-    [rows],
+    () => Object.values(checked).filter(Boolean).length,
+    [checked],
   );
-  const visitorCount = useMemo(
-    () => Object.values(rows).filter((r) => r.checked && r.isVisitor).length,
-    [rows],
+  const visitorCheckedCount = useMemo(
+    () =>
+      members.filter((m) => checked[m.id] && (memberStatus[m.id] ?? "MONTHLY") === "VISITOR")
+        .length,
+    [members, checked, memberStatus],
   );
 
   function toggleChecked(memberId: string) {
-    setRows((prev) => ({
-      ...prev,
-      [memberId]: {
-        checked: !(prev[memberId]?.checked ?? false),
-        isVisitor: prev[memberId]?.isVisitor ?? false,
-      },
-    }));
-  }
-
-  function toggleVisitor(memberId: string) {
-    setRows((prev) => ({
-      ...prev,
-      [memberId]: {
-        checked: prev[memberId]?.checked ?? false,
-        isVisitor: !(prev[memberId]?.isVisitor ?? false),
-      },
-    }));
+    setChecked((prev) => ({ ...prev, [memberId]: !(prev[memberId] ?? false) }));
   }
 
   async function handleSave() {
@@ -103,10 +88,8 @@ export default function AttendanceScreen() {
     try {
       const ops: Promise<void>[] = [];
       for (const member of members) {
-        const state = rows[member.id] ?? { checked: false, isVisitor: false };
-        if (state.checked) {
-          const type: PaymentType = state.isVisitor ? "VISITOR" : "MONTHLY";
-          ops.push(setAttendance(db, { memberId: member.id, date, type }));
+        if (checked[member.id]) {
+          ops.push(setAttendance(db, { memberId: member.id, date }));
         } else {
           ops.push(removeAttendance(db, { memberId: member.id, date }));
         }
@@ -133,12 +116,12 @@ export default function AttendanceScreen() {
               出欠を記録します。支払いの記録は「入力」タブから別途行ってください。
             </Text>
             <Text style={styles.subtitleNote}>
-              ビジターとして出席した人は、その場で支払い義務が発生します（未払いとして会計表に表示されます）。
+              ビジターとして出席した人は、その場で支払い義務が発生します（未払いとして会計表に表示されます）。区分は会計表の名前横で変更できます。
             </Text>
             <View style={styles.countRow}>
               <Text style={styles.countText}>{checkedCount}人 出席</Text>
-              {visitorCount > 0 ? (
-                <Text style={styles.countTextVisitor}>うちビジター {visitorCount}人</Text>
+              {visitorCheckedCount > 0 ? (
+                <Text style={styles.countTextVisitor}>うちビジター {visitorCheckedCount}人</Text>
               ) : null}
             </View>
             {loaded && members.length === 0 ? (
@@ -149,7 +132,8 @@ export default function AttendanceScreen() {
           </View>
         }
         renderItem={({ item }) => {
-          const state = rows[item.id] ?? { checked: false, isVisitor: false };
+          const isChecked = checked[item.id] ?? false;
+          const isVisitor = (memberStatus[item.id] ?? "MONTHLY") === "VISITOR";
           return (
             <Pressable
               testID={`attendance-row-${item.id}`}
@@ -159,30 +143,16 @@ export default function AttendanceScreen() {
               <View style={styles.rowLeft}>
                 <AppCheckbox
                   testID={`attendance-checkbox-${item.id}`}
-                  checked={state.checked}
+                  checked={isChecked}
                   onToggle={() => toggleChecked(item.id)}
                 />
                 <Text style={styles.name}>{item.name}</Text>
               </View>
-              {state.checked ? (
-                <Pressable
-                  testID={`attendance-visitor-${item.id}`}
-                  style={[styles.visitorChip, state.isVisitor && styles.visitorChipActive]}
-                  onPress={() => toggleVisitor(item.id)}
-                  hitSlop={8}
-                >
-                  <Text
-                    style={[
-                      styles.visitorChipText,
-                      state.isVisitor && styles.visitorChipTextActive,
-                    ]}
-                  >
-                    {state.isVisitor ? "ビジター" : "月謝"}
-                  </Text>
-                </Pressable>
-              ) : (
-                <Text style={styles.dash}>-</Text>
-              )}
+              <View style={[styles.statusChip, isVisitor && styles.statusChipVisitor]}>
+                <Text style={[styles.statusChipText, isVisitor && styles.statusChipTextVisitor]}>
+                  {isVisitor ? "ビジター" : "月謝"}
+                </Text>
+              </View>
             </Pressable>
           );
         }}
@@ -226,8 +196,7 @@ const styles = StyleSheet.create({
   },
   rowLeft: { flexDirection: "row", alignItems: "center", gap: 14 },
   name: { fontSize: 16, fontWeight: "700", color: colors.text },
-  dash: { color: colors.disabled, fontSize: 14 },
-  visitorChip: {
+  statusChip: {
     borderRadius: 999,
     borderWidth: 1,
     borderColor: colors.border,
@@ -235,12 +204,12 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     backgroundColor: colors.monthlyBg,
   },
-  visitorChipActive: {
+  statusChipVisitor: {
     backgroundColor: colors.visitorBg,
     borderColor: colors.visitorText,
   },
-  visitorChipText: { fontSize: 12, fontWeight: "700", color: colors.monthlyText },
-  visitorChipTextActive: { color: colors.visitorText },
+  statusChipText: { fontSize: 12, fontWeight: "700", color: colors.monthlyText },
+  statusChipTextVisitor: { color: colors.visitorText },
   separator: { height: 10 },
   footer: { marginTop: 16 },
 });

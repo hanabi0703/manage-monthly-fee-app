@@ -2,7 +2,7 @@ import { useCallback, useState } from "react";
 import { useFocusEffect, useRouter } from "expo-router";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSQLiteContext } from "expo-sqlite";
-import { listFeeSettings, listMembers, listPayments, upsertMemberByName } from "@/lib/db";
+import { getFeeForMonths, listMembers, listPayments, upsertMemberByName } from "@/lib/db";
 import { computeBalance } from "@/lib/balance";
 import { formatYen } from "@/lib/format";
 import { colors } from "@/lib/theme";
@@ -24,14 +24,21 @@ export default function MembersScreen() {
 
   const load = useCallback(() => {
     let cancelled = false;
-    Promise.all([listMembers(db), listPayments(db), listFeeSettings(db)]).then(
-      ([members, payments, settings]) => {
+    Promise.all([listMembers(db), listPayments(db)]).then(
+      async ([members, payments]) => {
+        if (cancelled) return;
+        const months = Array.from(new Set(payments.map((p) => p.date.slice(0, 7))));
+        const fees = await getFeeForMonths(db, months);
         if (cancelled) return;
         const computed = members.map((m) => {
           const monthly = payments.filter(
             (p) => p.memberId === m.id && p.type === "MONTHLY",
           );
-          return { id: m.id, name: m.name, balance: computeBalance(monthly, settings) };
+          return {
+            id: m.id,
+            name: m.name,
+            balance: computeBalance(monthly, (month) => fees[month] ?? 0),
+          };
         });
         setRows(computed);
         setLoaded(true);

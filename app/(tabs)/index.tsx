@@ -3,17 +3,19 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSQLiteContext } from "expo-sqlite";
 import {
+  getFeeForMonth,
   listAttendance,
-  listFeeSettings,
+  listMemberMonthStatusForMonth,
   listMembers,
   listMonths,
   listPayments,
   listPracticeDaysForMonth,
+  setMemberMonthStatus,
   type Attendance,
   type Member,
+  type PaymentType,
   type PaymentWithMember,
 } from "@/lib/db";
-import { standardFeeAt } from "@/lib/balance";
 import { currentMonthIso, formatMonthLabel, formatShortDate, formatYen, shiftMonth, todayIso } from "@/lib/format";
 import { colors } from "@/lib/theme";
 import { EmptyState, Screen, ScreenTitle } from "@/components/ui";
@@ -21,7 +23,7 @@ import { AppCard } from "@/components/AppCard";
 import { AppButton } from "@/components/AppButton";
 import { DoodleIcon } from "@/components/DoodleIcon";
 
-const MEMBER_COL_WIDTH = 112;
+const MEMBER_COL_WIDTH = 120;
 const DATE_COL_WIDTH = 88;
 const TOTAL_COL_WIDTH = 96;
 
@@ -33,6 +35,7 @@ export default function DashboardScreen() {
   const [members, setMembers] = useState<Member[]>([]);
   const [payments, setPayments] = useState<PaymentWithMember[]>([]);
   const [attendance, setAttendance] = useState<Attendance[]>([]);
+  const [memberStatus, setMemberStatus] = useState<Record<string, PaymentType>>({});
   const [dateKeys, setDateKeys] = useState<string[]>([]);
   const [monthlyFee, setMonthlyFee] = useState(0);
   const [loaded, setLoaded] = useState(false);
@@ -56,23 +59,19 @@ export default function DashboardScreen() {
         listPayments(db),
         listAttendance(db),
         listPracticeDaysForMonth(db, month),
-        listFeeSettings(db),
-      ]).then(([m, allPayments, allAttendance, practiceDays, feeSettings]) => {
+        listMemberMonthStatusForMonth(db, month),
+        getFeeForMonth(db, month),
+      ]).then(([m, allPayments, allAttendance, practiceDays, statusMap, fee]) => {
         if (cancelled) return;
         const monthPayments = allPayments.filter((p) => p.date.slice(0, 7) === month);
         const monthAttendance = allAttendance.filter((a) => a.date.slice(0, 7) === month);
-        const dates = Array.from(
-          new Set([
-            ...practiceDays.map((d) => d.date),
-            ...monthPayments.map((p) => p.date),
-            ...monthAttendance.map((a) => a.date),
-          ]),
-        ).sort((a, b) => a.localeCompare(b));
+        const dates = practiceDays.map((d) => d.date).sort((a, b) => a.localeCompare(b));
         setMembers(m);
         setPayments(monthPayments);
         setAttendance(monthAttendance);
+        setMemberStatus(statusMap);
         setDateKeys(dates);
-        setMonthlyFee(standardFeeAt(`${month}-01`, feeSettings));
+        setMonthlyFee(fee);
         setLoaded(true);
       });
       return () => {
@@ -98,6 +97,13 @@ export default function DashboardScreen() {
   const attendanceMap = new Map<string, Attendance>();
   for (const a of attendance) {
     attendanceMap.set(`${a.memberId}__${a.date}`, a);
+  }
+
+  async function handleToggleStatus(memberId: string) {
+    const current = memberStatus[memberId] ?? "MONTHLY";
+    const next: PaymentType = current === "MONTHLY" ? "VISITOR" : "MONTHLY";
+    setMemberStatus((prev) => ({ ...prev, [memberId]: next }));
+    await setMemberMonthStatus(db, { memberId, month: selectedMonth, type: next });
   }
 
   return (
@@ -134,7 +140,7 @@ export default function DashboardScreen() {
           <Pressable
             testID="fee-history-link"
             style={styles.feeLink}
-            onPress={() => router.push("/fee-history")}
+            onPress={() => router.push(`/fee-history/${selectedMonth}`)}
             hitSlop={8}
           >
             <Text style={styles.feeText}>月謝額 {formatYen(monthlyFee)}</Text>
@@ -155,7 +161,7 @@ export default function DashboardScreen() {
           <EmptyState>まだメンバーが登録されていません。「入力」タブから記録してください。</EmptyState>
         ) : loaded && dateKeys.length === 0 ? (
           <EmptyState>
-            この月の練習日が登録されていません。「設定」タブで登録するか、支払いを記録してください。
+            この月の練習日が登録されていません。「設定」タブで登録してください。
           </EmptyState>
         ) : (
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -182,6 +188,8 @@ export default function DashboardScreen() {
                 const memberTotal = payments
                   .filter((p) => p.memberId === m.id)
                   .reduce((sum, p) => sum + p.amount, 0);
+                const status = memberStatus[m.id] ?? "MONTHLY";
+                const isVisitor = status === "VISITOR";
                 return (
                 <View key={m.id} style={styles.row}>
                   <View style={[styles.cell, styles.memberCol]}>
@@ -192,20 +200,34 @@ export default function DashboardScreen() {
                     >
                       {m.name}
                     </Text>
+                    <Pressable
+                      testID={`member-status-toggle-${m.id}`}
+                      style={[styles.statusChip, isVisitor && styles.statusChipVisitor]}
+                      onPress={() => handleToggleStatus(m.id)}
+                      hitSlop={4}
+                    >
+                      <Text
+                        style={[
+                          styles.statusChipText,
+                          isVisitor && styles.statusChipTextVisitor,
+                        ]}
+                      >
+                        {isVisitor ? "ビジター" : "月謝"}
+                      </Text>
+                    </Pressable>
                   </View>
                   {dateKeys.map((d) => {
                     const key = `${m.id}__${d}`;
                     const att = attendanceMap.get(key);
                     const cellPayments = cellMap.get(key) ?? [];
-                    const matchingVisitorPayment =
-                      att?.type === "VISITOR"
-                        ? cellPayments.find((p) => p.type === "VISITOR")
-                        : undefined;
+                    const matchingVisitorPayment = isVisitor
+                      ? cellPayments.find((p) => p.type === "VISITOR")
+                      : undefined;
                     const extraPayments = cellPayments.filter(
                       (p) => p.id !== matchingVisitorPayment?.id,
                     );
-                    const showUnpaidVisitor = att?.type === "VISITOR" && !matchingVisitorPayment;
-                    const showAttended = att?.type === "MONTHLY";
+                    const showUnpaidVisitor = !!att && isVisitor && !matchingVisitorPayment;
+                    const showAttended = !!att && !isVisitor;
                     const isEmpty =
                       !att && extraPayments.length === 0 && !matchingVisitorPayment;
 
@@ -330,7 +352,7 @@ const styles = StyleSheet.create({
     minHeight: 52,
   },
   headCell: { borderLeftWidth: 0 },
-  memberCol: { width: MEMBER_COL_WIDTH, borderLeftWidth: 0 },
+  memberCol: { width: MEMBER_COL_WIDTH, borderLeftWidth: 0, gap: 6 },
   dateCol: { width: DATE_COL_WIDTH },
   totalCol: { width: TOTAL_COL_WIDTH, backgroundColor: colors.greenLight },
   headText: { fontWeight: "700", color: colors.textMuted, fontSize: 12 },
@@ -338,6 +360,16 @@ const styles = StyleSheet.create({
   nameCell: { fontWeight: "700", color: colors.text, fontSize: 13 },
   totalCell: { fontWeight: "800", color: colors.monthlyText, fontSize: 13 },
   dash: { color: colors.disabled, fontSize: 14 },
+  statusChip: {
+    alignSelf: "flex-start",
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    backgroundColor: colors.monthlyBg,
+  },
+  statusChipVisitor: { backgroundColor: colors.visitorBg },
+  statusChipText: { fontSize: 10.5, fontWeight: "700", color: colors.monthlyText },
+  statusChipTextVisitor: { color: colors.visitorText },
   amountPill: {
     flexDirection: "row",
     alignItems: "center",

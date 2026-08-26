@@ -4,14 +4,13 @@ import { Alert, FlatList, Pressable, StyleSheet, Text, View } from "react-native
 import { useSQLiteContext } from "expo-sqlite";
 import {
   deletePayment,
+  getFeeForMonths,
   getMember,
-  listFeeSettings,
   listPaymentsForMember,
-  type FeeSetting,
   type Member,
   type Payment,
 } from "@/lib/db";
-import { computeBalance, standardFeeAt } from "@/lib/balance";
+import { computeBalance } from "@/lib/balance";
 import { formatDate, formatYen } from "@/lib/format";
 import { colors } from "@/lib/theme";
 import { Badge, EmptyState, Screen, SectionLabel } from "@/components/ui";
@@ -23,23 +22,24 @@ export default function MemberDetailScreen() {
   const router = useRouter();
   const [member, setMember] = useState<Member | null>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
-  const [settings, setSettings] = useState<FeeSetting[]>([]);
+  const [feeByMonth, setFeeByMonth] = useState<Record<string, number>>({});
   const [loaded, setLoaded] = useState(false);
 
   const load = useCallback(() => {
     if (!id) return () => {};
     let cancelled = false;
-    Promise.all([
-      getMember(db, id),
-      listPaymentsForMember(db, id),
-      listFeeSettings(db),
-    ]).then(([m, p, s]) => {
-      if (cancelled) return;
-      setMember(m);
-      setPayments(p);
-      setSettings(s);
-      setLoaded(true);
-    });
+    Promise.all([getMember(db, id), listPaymentsForMember(db, id)]).then(
+      async ([m, p]) => {
+        if (cancelled) return;
+        const months = Array.from(new Set(p.map((payment) => payment.date.slice(0, 7))));
+        const fees = await getFeeForMonths(db, months);
+        if (cancelled) return;
+        setMember(m);
+        setPayments(p);
+        setFeeByMonth(fees);
+        setLoaded(true);
+      },
+    );
     return () => {
       cancelled = true;
     };
@@ -53,7 +53,7 @@ export default function MemberDetailScreen() {
   }
 
   const monthlyPayments = payments.filter((p) => p.type === "MONTHLY");
-  const balance = computeBalance(monthlyPayments, settings);
+  const balance = computeBalance(monthlyPayments, (month) => feeByMonth[month] ?? 0);
 
   if (loaded && !member) {
     return (
@@ -127,7 +127,7 @@ export default function MemberDetailScreen() {
         }
         renderItem={({ item }) => {
           const std =
-            item.type === "MONTHLY" ? standardFeeAt(item.date, settings) : null;
+            item.type === "MONTHLY" ? feeByMonth[item.date.slice(0, 7)] ?? null : null;
           const diff = std === null ? null : item.amount - std;
           const paidDate = item.createdAt.slice(0, 10);
           return (

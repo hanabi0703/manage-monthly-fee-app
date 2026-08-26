@@ -51,7 +51,7 @@ export default function RootLayout() {
               options={{ title: "メンバー編集" }}
             />
             <Stack.Screen
-              name="fee-history"
+              name="fee-history/[month]"
               options={{ title: "月謝設定" }}
             />
             <Stack.Screen

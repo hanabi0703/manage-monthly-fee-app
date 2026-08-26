@@ -4,12 +4,12 @@ import { Alert, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSQLiteContext } from "expo-sqlite";
 import {
   createPaymentForMember,
-  getCurrentFee,
+  getFeeForMonth,
   listMembers,
   type Member,
   type PaymentType,
 } from "@/lib/db";
-import { todayIso, formatYen } from "@/lib/format";
+import { currentMonthIso, todayIso, formatYen } from "@/lib/format";
 import { colors } from "@/lib/theme";
 import { Screen } from "@/components/ui";
 import { AppCard } from "@/components/AppCard";
@@ -32,7 +32,7 @@ export default function EntryScreen() {
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
-      Promise.all([listMembers(db), getCurrentFee(db)]).then(
+      Promise.all([listMembers(db), getFeeForMonth(db, currentMonthIso())]).then(
         ([memberList, fee]) => {
           if (cancelled) return;
           setMembers(memberList);
