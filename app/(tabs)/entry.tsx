@@ -5,8 +5,11 @@ import { useSQLiteContext } from "expo-sqlite";
 import {
   createPaymentForMember,
   getFeeForMonth,
+  getFeeForMonths,
   getMemberMonthStatus,
+  listAttendanceForMember,
   listMembers,
+  listMemberMonthStatusForMember,
   listPaymentsForMember,
   listPracticeDays,
   type Member,
@@ -49,6 +52,7 @@ export default function EntryScreen() {
   const [type, setType] = useState<PaymentType>("MONTHLY");
   const [members, setMembers] = useState<Member[]>([]);
   const [practiceDays, setPracticeDays] = useState<PracticeDay[]>([]);
+  const [selectableDatesForMember, setSelectableDatesForMember] = useState<PracticeDay[]>([]);
   const [currentFee, setCurrentFee] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -73,6 +77,53 @@ export default function EntryScreen() {
       };
     }, [db]),
   );
+
+  // メンバーを選択したら、そのメンバーがまだ支払っていない練習日だけに日付の候補を絞り込む。
+  // (月謝はその月の月謝が未払いの月に含まれる日、ビジターは出席済みで未払いの日)
+  useEffect(() => {
+    if (!memberId) {
+      setSelectableDatesForMember(practiceDays);
+      return;
+    }
+    let cancelled = false;
+    const months = Array.from(new Set(practiceDays.map((d) => d.date.slice(0, 7))));
+    Promise.all([
+      listAttendanceForMember(db, memberId),
+      listPaymentsForMember(db, memberId),
+      listMemberMonthStatusForMember(db, memberId),
+      getFeeForMonths(db, months),
+    ]).then(([memberAttendance, memberPayments, statusByMonth, fees]) => {
+      if (cancelled) return;
+      const attendedDates = new Set(memberAttendance.map((a) => a.date));
+      const visitorPaidDates = new Set(
+        memberPayments.filter((p) => p.type === "VISITOR").map((p) => p.date),
+      );
+      const monthlyPaidByMonth: Record<string, number> = {};
+      for (const p of memberPayments) {
+        if (p.type !== "MONTHLY") continue;
+        const month = p.date.slice(0, 7);
+        monthlyPaidByMonth[month] = (monthlyPaidByMonth[month] ?? 0) + p.amount;
+      }
+      const statusForDate = (d: string): PaymentType => statusByMonth[d.slice(0, 7)] ?? "MONTHLY";
+      const eligible = practiceDays.filter((d) => {
+        if (statusForDate(d.date) === "VISITOR") {
+          return attendedDates.has(d.date) && !visitorPaidDates.has(d.date);
+        }
+        const month = d.date.slice(0, 7);
+        return (monthlyPaidByMonth[month] ?? 0) < (fees[month] ?? 0);
+      });
+      setSelectableDatesForMember(eligible);
+      const nextDate = eligible.some((d) => d.date === date) ? date : pickDefaultDate(eligible);
+      setDate(nextDate);
+      if (nextDate) {
+        setType(statusForDate(nextDate));
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [db, memberId, practiceDays]);
 
   // もらう金額は選択できない: 月謝ならその月の月謝額、ビジターなら固定1,000円。
   useEffect(() => {
@@ -156,7 +207,9 @@ export default function EntryScreen() {
           <PaymentFields
             date={date}
             onDateChange={setDate}
-            practiceDays={practiceDays}
+            practiceDays={memberId ? selectableDatesForMember : practiceDays}
+            dateEmptyTitle={memberId ? "未払いの練習日はありません" : undefined}
+            dateEmptyHint={memberId ? "このメンバーの支払いはすべて完了しています。" : undefined}
             amount={amount}
             type={type}
             onTypeChange={setType}

@@ -520,6 +520,43 @@ export async function listAttendance(db: SQLiteDatabase): Promise<Attendance[]> 
   }));
 }
 
+export async function listAttendanceForMember(
+  db: SQLiteDatabase,
+  memberId: string,
+): Promise<Attendance[]> {
+  const rows = await db.getAllAsync<{
+    id: string;
+    date: string;
+    member_id: string;
+    created_at: string;
+  }>(
+    "SELECT id, date, member_id, created_at FROM attendance WHERE member_id = ?",
+    memberId,
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    date: r.date,
+    memberId: r.member_id,
+    createdAt: r.created_at,
+  }));
+}
+
+/** Every month ("YYYY-MM") this member has an explicit MONTHLY/VISITOR classification for. */
+export async function listMemberMonthStatusForMember(
+  db: SQLiteDatabase,
+  memberId: string,
+): Promise<Record<string, PaymentType>> {
+  const rows = await db.getAllAsync<{ month: string; type: PaymentType }>(
+    "SELECT month, type FROM member_month_status WHERE member_id = ?",
+    memberId,
+  );
+  const result: Record<string, PaymentType> = {};
+  for (const row of rows) {
+    result[row.month] = row.type;
+  }
+  return result;
+}
+
 /**
  * Every (memberId, date) where the member attended, was classified as
  * VISITOR for that date's month, and has no matching VISITOR payment for

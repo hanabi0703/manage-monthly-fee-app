@@ -9,6 +9,8 @@ type Props = {
   date: string;
   onDateChange: (value: string) => void;
   practiceDays: PracticeDay[];
+  dateEmptyTitle?: string;
+  dateEmptyHint?: string;
   amount: string;
   type: PaymentType;
   onTypeChange: (value: PaymentType) => void;
@@ -25,6 +27,8 @@ export function PaymentFields({
   date,
   onDateChange,
   practiceDays,
+  dateEmptyTitle,
+  dateEmptyHint,
   amount,
   type,
   onTypeChange,
@@ -38,6 +42,8 @@ export function PaymentFields({
         value={date}
         onChange={onDateChange}
         practiceDays={practiceDays}
+        emptyTitle={dateEmptyTitle}
+        emptyHint={dateEmptyHint}
       />
       <View style={styles.field}>
         <Text style={styles.label}>もらった金額</Text>

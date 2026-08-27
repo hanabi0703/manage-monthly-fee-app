@@ -10,6 +10,8 @@ type Props = {
   onChange: (date: string) => void;
   practiceDays: PracticeDay[];
   testID?: string;
+  emptyTitle?: string;
+  emptyHint?: string;
 };
 
 export function PracticeDaySelectField({
@@ -18,6 +20,8 @@ export function PracticeDaySelectField({
   onChange,
   practiceDays,
   testID,
+  emptyTitle = "練習日が登録されていません",
+  emptyHint = "「設定」タブの練習日設定から登録してください。",
 }: Props) {
   const [open, setOpen] = useState(false);
 
@@ -26,9 +30,9 @@ export function PracticeDaySelectField({
       <View style={styles.field}>
         <Text style={styles.label}>{label}</Text>
         <View style={[styles.input, styles.inputDisabled]}>
-          <Text style={styles.placeholder}>練習日が登録されていません</Text>
+          <Text style={styles.placeholder}>{emptyTitle}</Text>
         </View>
-        <Text style={styles.hint}>「設定」タブの練習日設定から登録してください。</Text>
+        <Text style={styles.hint}>{emptyHint}</Text>
       </View>
     );
   }
