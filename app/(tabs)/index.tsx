@@ -108,14 +108,27 @@ export default function DashboardScreen() {
   }
 
   function handleToggleStatus(memberId: string) {
-    // 初回(まだ明示的に設定されていない場合)はそのまま設定するが、
-    // 一度設定した後の変更は誤操作防止のため確認ダイアログを挟む。
     const alreadySet = memberStatus[memberId] !== undefined;
     const current = memberStatus[memberId] ?? "MONTHLY";
     const next: PaymentType = current === "MONTHLY" ? "VISITOR" : "MONTHLY";
     const currentLabel = current === "MONTHLY" ? "月謝" : "ビジター";
     const nextLabel = next === "MONTHLY" ? "月謝" : "ビジター";
 
+    // 現在の区分での支払い記録が今月すでにある場合は、区分の不整合を防ぐため
+    // まずその支払いを削除してもらう必要がある。
+    const existingPaymentsForCurrentType = payments.filter(
+      (p) => p.memberId === memberId && p.type === current,
+    );
+    if (existingPaymentsForCurrentType.length > 0) {
+      Alert.alert(
+        "区分を変更できません",
+        `この月はすでに${currentLabel}として支払いが記録されています（${existingPaymentsForCurrentType.length}件）。区分を変更するには、先にメンバー詳細からその支払い記録を削除してください。`,
+      );
+      return;
+    }
+
+    // 初回(まだ明示的に設定されていない場合)はそのまま設定するが、
+    // 一度設定した後の変更は誤操作防止のため確認ダイアログを挟む。
     if (!alreadySet) {
       applyStatusChange(memberId, next);
       return;

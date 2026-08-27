@@ -2,9 +2,15 @@ import { useCallback, useState } from "react";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSQLiteContext } from "expo-sqlite";
-import { getFeeForMonths, listMembers, listPayments, upsertMemberByName } from "@/lib/db";
+import {
+  getFeeForMonths,
+  listMembers,
+  listMemberMonthStatusForMonth,
+  listPayments,
+  upsertMemberByName,
+} from "@/lib/db";
 import { computeBalance } from "@/lib/balance";
-import { formatYen } from "@/lib/format";
+import { currentMonthIso, formatYen } from "@/lib/format";
 import { colors } from "@/lib/theme";
 import { Badge, EmptyState, Screen, ScreenTitle, SectionLabel } from "@/components/ui";
 import { AppCard } from "@/components/AppCard";
@@ -24,30 +30,46 @@ export default function MembersScreen() {
 
   const load = useCallback(() => {
     let cancelled = false;
-    Promise.all([listMembers(db), listPayments(db)]).then(
-      async ([members, payments]) => {
-        if (cancelled) return;
-        const months = Array.from(new Set(payments.map((p) => p.date.slice(0, 7))));
-        const fees = await getFeeForMonths(db, months);
-        if (cancelled) return;
-        const computed = members.map((m) => {
-          const monthly = payments.filter(
-            (p) => p.memberId === m.id && p.type === "MONTHLY",
-          );
-          return {
-            id: m.id,
-            name: m.name,
-            balance: computeBalance(monthly, (month) => fees[month] ?? 0),
-          };
-        });
-        // 未払い(balance < 0)のメンバーを優先し、それ以外は元の並び(名前昇順)を保つ。
-        const sorted = [...computed].sort(
-          (a, b) => Number(a.balance >= 0) - Number(b.balance >= 0),
+    const currentMonth = currentMonthIso();
+    Promise.all([
+      listMembers(db),
+      listPayments(db),
+      listMemberMonthStatusForMonth(db, currentMonth),
+    ]).then(async ([members, payments, currentMonthStatus]) => {
+      if (cancelled) return;
+      const months = Array.from(
+        new Set([...payments.map((p) => p.date.slice(0, 7)), currentMonth]),
+      );
+      const fees = await getFeeForMonths(db, months);
+      if (cancelled) return;
+      const currentMonthFee = fees[currentMonth] ?? 0;
+      const computed = members.map((m) => {
+        const monthly = payments.filter(
+          (p) => p.memberId === m.id && p.type === "MONTHLY",
         );
-        setRows(sorted);
-        setLoaded(true);
-      },
-    );
+        const balance = computeBalance(monthly, (month) => fees[month] ?? 0);
+        // その月の初日以降、月謝の人がまだ今月分を一切払っていない場合は
+        // 未払いとして扱う(computeBalanceは実際の支払い記録のみを見るため、
+        // 一度も払っていない月は考慮されない)。
+        const paidThisMonth = monthly
+          .filter((p) => p.date.slice(0, 7) === currentMonth)
+          .reduce((sum, p) => sum + p.amount, 0);
+        const statusThisMonth = currentMonthStatus[m.id] ?? "MONTHLY";
+        const unpaidThisMonth = statusThisMonth === "MONTHLY" && paidThisMonth === 0;
+        const effectiveBalance = unpaidThisMonth ? balance - currentMonthFee : balance;
+        return {
+          id: m.id,
+          name: m.name,
+          balance: effectiveBalance,
+        };
+      });
+      // 未払い(balance < 0)のメンバーを優先し、それ以外は元の並び(名前昇順)を保つ。
+      const sorted = [...computed].sort(
+        (a, b) => Number(a.balance >= 0) - Number(b.balance >= 0),
+      );
+      setRows(sorted);
+      setLoaded(true);
+    });
     return () => {
       cancelled = true;
     };
