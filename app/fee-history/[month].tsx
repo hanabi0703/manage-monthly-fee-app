@@ -1,12 +1,13 @@
 import { useCallback, useState } from "react";
 import { Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSQLiteContext } from "expo-sqlite";
 import {
   clearMonthFeeOverride,
   getBaseFee,
   getMonthFeeOverride,
   isMonthApproved,
+  MonthLockedError,
   setMonthFeeOverride,
 } from "@/lib/db";
 import { formatMonthLabel, formatYen } from "@/lib/format";
@@ -55,6 +56,13 @@ export default function MonthFeeSettingScreen() {
     try {
       await setMonthFeeOverride(db, month, amountNum);
       load();
+    } catch (err) {
+      if (err instanceof MonthLockedError) {
+        Alert.alert("変更できません", "この月は承認済みのため、月謝を変更できません。");
+        load();
+        return;
+      }
+      throw err;
     } finally {
       setSaving(false);
     }
@@ -66,6 +74,13 @@ export default function MonthFeeSettingScreen() {
     try {
       await clearMonthFeeOverride(db, month);
       load();
+    } catch (err) {
+      if (err instanceof MonthLockedError) {
+        Alert.alert("変更できません", "この月は承認済みのため、月謝を変更できません。");
+        load();
+        return;
+      }
+      throw err;
     } finally {
       setSaving(false);
     }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSQLiteContext } from "expo-sqlite";
 import {
   isMonthApproved,
@@ -8,13 +8,14 @@ import {
   listMemberMonthStatusForMonth,
   listMembers,
   listPracticeDays,
+  MonthLockedError,
   removeAttendance,
   setAttendance,
   type Member,
   type PaymentType,
   type PracticeDay,
 } from "@/lib/db";
-import { formatDate, todayIso } from "@/lib/format";
+import { formatDate, formatMonthLabel, todayIso } from "@/lib/format";
 import { colors } from "@/lib/theme";
 import { EmptyState, Screen, ScreenTitle } from "@/components/ui";
 import { AppButton } from "@/components/AppButton";
@@ -140,6 +141,16 @@ export default function AttendanceScreen() {
       }
       await Promise.all(ops);
       setFeedback(`✓ ${formatDate(date)}の出欠を保存しました`);
+    } catch (err) {
+      if (err instanceof MonthLockedError) {
+        Alert.alert(
+          "保存できません",
+          `${formatMonthLabel(err.month)}は承認済みのため、出欠を変更できません。`,
+        );
+        setMonthApproved(true);
+        return;
+      }
+      throw err;
     } finally {
       setSaving(false);
     }

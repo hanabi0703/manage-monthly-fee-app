@@ -12,6 +12,7 @@ import {
   listMonths,
   listPayments,
   listPracticeDaysForMonth,
+  MonthLockedError,
   setMemberMonthStatus,
   type Attendance,
   type Member,
@@ -138,7 +139,19 @@ export default function DashboardScreen() {
 
   async function applyStatusChange(memberId: string, next: PaymentType) {
     setMemberStatus((prev) => ({ ...prev, [memberId]: next }));
-    await setMemberMonthStatus(db, { memberId, month: selectedMonth, type: next });
+    try {
+      await setMemberMonthStatus(db, { memberId, month: selectedMonth, type: next });
+    } catch (err) {
+      if (err instanceof MonthLockedError) {
+        Alert.alert(
+          "変更できません",
+          `${formatMonthLabel(err.month)}は承認済みのため、区分を変更できません。`,
+        );
+        load(selectedMonth);
+        return;
+      }
+      throw err;
+    }
   }
 
   function handleApproveMonth() {
