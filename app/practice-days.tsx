@@ -1,11 +1,14 @@
 import { useCallback, useState } from "react";
 import { useFocusEffect } from "expo-router";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSQLiteContext } from "expo-sqlite";
 import {
   addPracticeDay,
   deletePracticeDay,
+  listAttendanceForDate,
+  listPaymentsForDate,
   listPracticeDaysForMonth,
+  removeAttendance,
   type PracticeDay,
 } from "@/lib/db";
 import { currentMonthIso, formatDate, formatMonthLabel, shiftMonth } from "@/lib/format";
@@ -64,7 +67,42 @@ export default function PracticeDaysScreen() {
     }
   }
 
-  async function handleDelete(id: string) {
+  async function handleDelete(id: string, date: string) {
+    const [attendanceList, paymentsList] = await Promise.all([
+      listAttendanceForDate(db, date),
+      listPaymentsForDate(db, date),
+    ]);
+
+    if (paymentsList.length > 0) {
+      Alert.alert(
+        "削除できません",
+        `${formatDate(date)}はすでに支払いが記録されているメンバーがいます（${paymentsList.length}件）。先にその支払いを削除してから練習日を削除してください。`,
+      );
+      return;
+    }
+
+    if (attendanceList.length > 0) {
+      Alert.alert(
+        "練習日を削除しますか？",
+        `${formatDate(date)}には出欠記録があります（${attendanceList.length}人）。削除すると、その日の参加者は全員欠席として扱われます。よろしいですか？`,
+        [
+          { text: "キャンセル", style: "cancel" },
+          {
+            text: "削除する",
+            style: "destructive",
+            onPress: async () => {
+              await Promise.all(
+                attendanceList.map((a) => removeAttendance(db, { memberId: a.memberId, date })),
+              );
+              await deletePracticeDay(db, id);
+              loadPracticeDays(selectedMonth);
+            },
+          },
+        ],
+      );
+      return;
+    }
+
     await deletePracticeDay(db, id);
     loadPracticeDays(selectedMonth);
   }
@@ -104,7 +142,7 @@ export default function PracticeDaysScreen() {
               {practiceDays.map((d) => (
                 <View key={d.id} style={styles.dateRow}>
                   <Text style={styles.dateRowText}>{formatDate(d.date)}</Text>
-                  <Pressable hitSlop={10} onPress={() => handleDelete(d.id)}>
+                  <Pressable hitSlop={10} onPress={() => handleDelete(d.id, d.date)}>
                     <Text style={styles.deleteText}>削除</Text>
                   </Pressable>
                 </View>
