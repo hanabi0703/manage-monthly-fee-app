@@ -141,40 +141,38 @@ export default function AttendanceScreen() {
 
   return (
     <Screen>
+      <View style={styles.header}>
+        <ScreenTitle title="出欠確認" subtitle="練習日ごとに出欠を記録します。" />
+        <PracticeDaySelectField
+          testID="attendance-date"
+          label="日付"
+          value={date}
+          onChange={handleDateChange}
+          practiceDays={practiceDays}
+        />
+        <Text style={styles.subtitle}>
+          支払いの記録は「入力」タブから別途行ってください。
+        </Text>
+        <Text style={styles.subtitleNote}>
+          ビジターとして出席した人は、その場で支払い義務が発生します（未払いとして会計表に表示されます）。区分は会計表の名前横で変更できます。
+        </Text>
+        <View style={styles.countRow}>
+          <Text style={styles.countText}>{checkedCount}人 出席</Text>
+          {visitorCheckedCount > 0 ? (
+            <Text style={styles.countTextVisitor}>うちビジター {visitorCheckedCount}人</Text>
+          ) : null}
+        </View>
+        {loaded && date && members.length === 0 ? (
+          <EmptyState>
+            まだメンバーが登録されていません。「メンバー」タブから追加してください。
+          </EmptyState>
+        ) : null}
+      </View>
       <FlatList
         contentContainerStyle={styles.wrap}
         data={loaded ? members : []}
         keyExtractor={(m) => m.id}
         showsVerticalScrollIndicator={false}
-        ListHeaderComponent={
-          <View style={styles.header}>
-            <ScreenTitle title="出欠確認" subtitle="練習日ごとに出欠を記録します。" />
-            <PracticeDaySelectField
-              testID="attendance-date"
-              label="日付"
-              value={date}
-              onChange={handleDateChange}
-              practiceDays={practiceDays}
-            />
-            <Text style={styles.subtitle}>
-              支払いの記録は「入力」タブから別途行ってください。
-            </Text>
-            <Text style={styles.subtitleNote}>
-              ビジターとして出席した人は、その場で支払い義務が発生します（未払いとして会計表に表示されます）。区分は会計表の名前横で変更できます。
-            </Text>
-            <View style={styles.countRow}>
-              <Text style={styles.countText}>{checkedCount}人 出席</Text>
-              {visitorCheckedCount > 0 ? (
-                <Text style={styles.countTextVisitor}>うちビジター {visitorCheckedCount}人</Text>
-              ) : null}
-            </View>
-            {loaded && date && members.length === 0 ? (
-              <EmptyState>
-                まだメンバーが登録されていません。「メンバー」タブから追加してください。
-              </EmptyState>
-            ) : null}
-          </View>
-        }
         renderItem={({ item }) => {
           const isChecked = checked[item.id] ?? false;
           const isVisitor = (memberStatus[item.id] ?? "MONTHLY") === "VISITOR";
@@ -225,7 +223,7 @@ export default function AttendanceScreen() {
 
 const styles = StyleSheet.create({
   wrap: { padding: 20, paddingBottom: 48 },
-  header: { gap: 8, marginBottom: 8 },
+  header: { gap: 8, marginBottom: 8, zIndex: 10 },
   subtitle: { fontSize: 13, color: colors.textMuted, lineHeight: 19, marginTop: 6 },
   subtitleNote: { fontSize: 12, color: colors.unpaidText, lineHeight: 18 },
   countRow: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 4 },
