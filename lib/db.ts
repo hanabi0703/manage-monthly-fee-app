@@ -2,6 +2,9 @@ import type { SQLiteDatabase } from "expo-sqlite";
 
 export type PaymentType = "MONTHLY" | "VISITOR";
 
+/** Fixed per-visit fee for VISITOR-type payments. */
+export const VISITOR_FEE = 1000;
+
 export type Member = {
   id: string;
   name: string;

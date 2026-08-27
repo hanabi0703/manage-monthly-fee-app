@@ -12,6 +12,7 @@ import {
   listMemberMonthStatusForMember,
   listPaymentsForMember,
   listPracticeDays,
+  VISITOR_FEE,
   type Member,
   type PaymentType,
   type PracticeDay,
@@ -25,7 +26,6 @@ import { MemberSelectField } from "@/components/MemberSelectField";
 import { PaymentFields } from "@/components/PaymentFields";
 
 const PRACTICE_DAY_HISTORY_MONTHS = 12;
-const VISITOR_FEE = 1000;
 
 function selectableDates(days: PracticeDay[]): PracticeDay[] {
   const cutoff = `${shiftMonth(currentMonthIso(), -(PRACTICE_DAY_HISTORY_MONTHS - 1))}-01`;
@@ -80,21 +80,28 @@ export default function EntryScreen() {
 
   // メンバーを選択したら、そのメンバーがまだ支払っていない練習日だけに日付の候補を絞り込む。
   // (月謝はその月の月謝が未払いの月に含まれる日、ビジターは出席済みで未払いの日)
+  // ビジター代未払いの日は、その後に練習日設定から削除されていても必ず候補に含める
+  // (そうしないと未払いを解消する手段がなくなってしまうため)。
   useEffect(() => {
     if (!memberId) {
       setSelectableDatesForMember(practiceDays);
       return;
     }
     let cancelled = false;
-    const months = Array.from(new Set(practiceDays.map((d) => d.date.slice(0, 7))));
     Promise.all([
       listAttendanceForMember(db, memberId),
       listPaymentsForMember(db, memberId),
       listMemberMonthStatusForMember(db, memberId),
-      getFeeForMonths(db, months),
-    ]).then(([memberAttendance, memberPayments, statusByMonth, fees]) => {
+    ]).then(async ([memberAttendance, memberPayments, statusByMonth]) => {
       if (cancelled) return;
-      const attendedDates = new Set(memberAttendance.map((a) => a.date));
+      const months = Array.from(
+        new Set([
+          ...practiceDays.map((d) => d.date.slice(0, 7)),
+          ...memberAttendance.map((a) => a.date.slice(0, 7)),
+        ]),
+      );
+      const fees = await getFeeForMonths(db, months);
+      if (cancelled) return;
       const visitorPaidDates = new Set(
         memberPayments.filter((p) => p.type === "VISITOR").map((p) => p.date),
       );
@@ -105,13 +112,25 @@ export default function EntryScreen() {
         monthlyPaidByMonth[month] = (monthlyPaidByMonth[month] ?? 0) + p.amount;
       }
       const statusForDate = (d: string): PaymentType => statusByMonth[d.slice(0, 7)] ?? "MONTHLY";
-      const eligible = practiceDays.filter((d) => {
-        if (statusForDate(d.date) === "VISITOR") {
-          return attendedDates.has(d.date) && !visitorPaidDates.has(d.date);
-        }
-        const month = d.date.slice(0, 7);
-        return (monthlyPaidByMonth[month] ?? 0) < (fees[month] ?? 0);
-      });
+
+      const unpaidVisitorDates = memberAttendance
+        .filter((a) => statusForDate(a.date) === "VISITOR" && !visitorPaidDates.has(a.date))
+        .map((a) => a.date);
+      const unpaidMonthlyDates = practiceDays
+        .filter((d) => {
+          if (statusForDate(d.date) !== "MONTHLY") return false;
+          const month = d.date.slice(0, 7);
+          return (monthlyPaidByMonth[month] ?? 0) < (fees[month] ?? 0);
+        })
+        .map((d) => d.date);
+
+      const eligibleDateStrings = Array.from(
+        new Set([...unpaidVisitorDates, ...unpaidMonthlyDates]),
+      ).sort((a, b) => b.localeCompare(a));
+      const eligible: PracticeDay[] = eligibleDateStrings.map(
+        (d) => practiceDays.find((p) => p.date === d) ?? { id: d, date: d, createdAt: "" },
+      );
+
       setSelectableDatesForMember(eligible);
       const nextDate = eligible.some((d) => d.date === date) ? date : pickDefaultDate(eligible);
       setDate(nextDate);

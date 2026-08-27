@@ -6,12 +6,16 @@ import {
   deletePayment,
   getFeeForMonths,
   getMember,
+  listAttendanceForMember,
+  listMemberMonthStatusForMember,
   listPaymentsForMember,
+  VISITOR_FEE,
   type Member,
   type Payment,
+  type PaymentType,
 } from "@/lib/db";
 import { computeBalance } from "@/lib/balance";
-import { formatDate, formatYen } from "@/lib/format";
+import { currentMonthIso, formatDate, formatMonthLabel, formatYen } from "@/lib/format";
 import { colors } from "@/lib/theme";
 import { Badge, EmptyState, Screen, SectionLabel } from "@/components/ui";
 import { AppCard } from "@/components/AppCard";
@@ -23,23 +27,41 @@ export default function MemberDetailScreen() {
   const [member, setMember] = useState<Member | null>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [feeByMonth, setFeeByMonth] = useState<Record<string, number>>({});
+  const [statusByMonth, setStatusByMonth] = useState<Record<string, PaymentType>>({});
+  const [unpaidVisitorDates, setUnpaidVisitorDates] = useState<string[]>([]);
   const [loaded, setLoaded] = useState(false);
 
   const load = useCallback(() => {
     if (!id) return () => {};
     let cancelled = false;
-    Promise.all([getMember(db, id), listPaymentsForMember(db, id)]).then(
-      async ([m, p]) => {
-        if (cancelled) return;
-        const months = Array.from(new Set(p.map((payment) => payment.date.slice(0, 7))));
-        const fees = await getFeeForMonths(db, months);
-        if (cancelled) return;
-        setMember(m);
-        setPayments(p);
-        setFeeByMonth(fees);
-        setLoaded(true);
-      },
-    );
+    const currentMonth = currentMonthIso();
+    Promise.all([
+      getMember(db, id),
+      listPaymentsForMember(db, id),
+      listAttendanceForMember(db, id),
+      listMemberMonthStatusForMember(db, id),
+    ]).then(async ([m, p, attendanceList, statusMap]) => {
+      if (cancelled) return;
+      const months = Array.from(
+        new Set([...p.map((payment) => payment.date.slice(0, 7)), currentMonth]),
+      );
+      const fees = await getFeeForMonths(db, months);
+      if (cancelled) return;
+      const visitorPaidDates = new Set(
+        p.filter((payment) => payment.type === "VISITOR").map((payment) => payment.date),
+      );
+      const unpaidVisitor = attendanceList
+        .filter((a) => (statusMap[a.date.slice(0, 7)] ?? "MONTHLY") === "VISITOR")
+        .filter((a) => !visitorPaidDates.has(a.date))
+        .map((a) => a.date)
+        .sort((a, b) => b.localeCompare(a));
+      setMember(m);
+      setPayments(p);
+      setFeeByMonth(fees);
+      setStatusByMonth(statusMap);
+      setUnpaidVisitorDates(unpaidVisitor);
+      setLoaded(true);
+    });
     return () => {
       cancelled = true;
     };
@@ -54,6 +76,15 @@ export default function MemberDetailScreen() {
 
   const monthlyPayments = payments.filter((p) => p.type === "MONTHLY");
   const balance = computeBalance(monthlyPayments, (month) => feeByMonth[month] ?? 0);
+
+  const currentMonth = currentMonthIso();
+  const currentMonthStatus = statusByMonth[currentMonth] ?? "MONTHLY";
+  const currentMonthFee = feeByMonth[currentMonth] ?? 0;
+  const paidThisMonth = monthlyPayments
+    .filter((p) => p.date.slice(0, 7) === currentMonth)
+    .reduce((sum, p) => sum + p.amount, 0);
+  const currentMonthUnpaid = currentMonthStatus === "MONTHLY" && paidThisMonth < currentMonthFee;
+  const hasUnpaidItems = currentMonthUnpaid || unpaidVisitorDates.length > 0;
 
   if (loaded && !member) {
     return (
@@ -116,6 +147,26 @@ export default function MemberDetailScreen() {
                 </>
               )}
             </AppCard>
+
+            {hasUnpaidItems ? (
+              <AppCard style={styles.unpaidCard}>
+                <Text style={styles.unpaidCardTitle}>未払いの内容</Text>
+                {currentMonthUnpaid ? (
+                  <View style={styles.unpaidItemRow}>
+                    <Text style={styles.unpaidItemLabel}>
+                      {formatMonthLabel(currentMonth)}の月謝
+                    </Text>
+                    <Text style={styles.unpaidItemAmount}>{formatYen(currentMonthFee)}</Text>
+                  </View>
+                ) : null}
+                {unpaidVisitorDates.map((d) => (
+                  <View key={d} style={styles.unpaidItemRow}>
+                    <Text style={styles.unpaidItemLabel}>{formatDate(d)}のビジター代</Text>
+                    <Text style={styles.unpaidItemAmount}>{formatYen(VISITOR_FEE)}</Text>
+                  </View>
+                ))}
+              </AppCard>
+            ) : null}
 
             <View style={styles.historyHeader}>
               <SectionLabel>支払い履歴</SectionLabel>
@@ -198,6 +249,15 @@ const styles = StyleSheet.create({
   balanceLabel: { fontSize: 14, color: colors.textMuted },
   balanceValue: { fontSize: 26, fontWeight: "800", color: colors.text, marginTop: 6 },
   balanceNote: { fontSize: 12, color: colors.textMuted, marginTop: 6, lineHeight: 18 },
+  unpaidCard: { gap: 8, backgroundColor: colors.unpaidBg, borderColor: colors.unpaidText },
+  unpaidCardTitle: { fontSize: 13, fontWeight: "700", color: colors.unpaidText },
+  unpaidItemRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  unpaidItemLabel: { fontSize: 14, color: colors.text },
+  unpaidItemAmount: { fontSize: 14, fontWeight: "700", color: colors.unpaidText },
   historyHeader: { marginTop: 4 },
   paymentRow: {
     flexDirection: "row",
