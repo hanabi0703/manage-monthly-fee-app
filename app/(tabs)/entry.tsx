@@ -5,6 +5,7 @@ import { useSQLiteContext } from "expo-sqlite";
 import {
   createPaymentForMember,
   getFeeForMonth,
+  getMemberMonthStatus,
   listMembers,
   listPaymentsForMember,
   listPracticeDays,
@@ -106,6 +107,17 @@ export default function EntryScreen() {
         Alert.alert(
           "支払い済みです",
           `${formatDate(date)}はすでにこのメンバーの支払いが記録されています。`,
+        );
+        return;
+      }
+      const monthStatus = await getMemberMonthStatus(db, memberId, date.slice(0, 7));
+      if (monthStatus !== type) {
+        const memberName = members.find((m) => m.id === memberId)?.name ?? "";
+        const statusLabel = monthStatus === "MONTHLY" ? "月謝" : "ビジター";
+        const typeLabel = type === "MONTHLY" ? "月謝" : "ビジター";
+        Alert.alert(
+          "区分が一致しません",
+          `${memberName}さんは今月「${statusLabel}」として設定されています。「${typeLabel}」として登録することはできません。会計表の名前横で区分を変更してから登録してください。`,
         );
         return;
       }

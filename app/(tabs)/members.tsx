@@ -40,7 +40,11 @@ export default function MembersScreen() {
             balance: computeBalance(monthly, (month) => fees[month] ?? 0),
           };
         });
-        setRows(computed);
+        // 未払い(balance < 0)のメンバーを優先し、それ以外は元の並び(名前昇順)を保つ。
+        const sorted = [...computed].sort(
+          (a, b) => Number(a.balance >= 0) - Number(b.balance >= 0),
+        );
+        setRows(sorted);
         setLoaded(true);
       },
     );
@@ -98,7 +102,14 @@ export default function MembersScreen() {
                 <View style={styles.rowLeft}>
                   <DoodleIcon name="members" size={22} color={colors.tabInactive} />
                   <View>
-                    <Text style={styles.name}>{item.name}</Text>
+                    <View style={styles.nameRow}>
+                      <Text style={styles.name}>{item.name}</Text>
+                      {item.balance < 0 ? (
+                        <View testID={`member-unpaid-badge-${item.id}`} style={styles.unpaidBadge}>
+                          <Text style={styles.unpaidBadgeText}>未払い</Text>
+                        </View>
+                      ) : null}
+                    </View>
                     {item.balance < 0 ? (
                       <Badge label={`未払金 ${formatYen(Math.abs(item.balance))}`} tone="unpaid" />
                     ) : item.balance > 0 ? (
@@ -131,6 +142,14 @@ const styles = StyleSheet.create({
   },
   rowDivider: { borderTopWidth: 1, borderTopColor: colors.border },
   rowLeft: { flexDirection: "row", alignItems: "center", gap: 14 },
-  name: { fontSize: 18, fontWeight: "700", color: colors.text, marginBottom: 8 },
+  nameRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 8 },
+  name: { fontSize: 18, fontWeight: "700", color: colors.text },
+  unpaidBadge: {
+    backgroundColor: colors.coral,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  unpaidBadgeText: { fontSize: 10.5, fontWeight: "700", color: "#FFFFFF" },
   chevron: { fontSize: 26, color: colors.textMuted },
 });

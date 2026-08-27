@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useFocusEffect, useRouter } from "expo-router";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSQLiteContext } from "expo-sqlite";
 import {
   getFeeForMonth,
@@ -102,11 +102,36 @@ export default function DashboardScreen() {
     attendanceMap.set(`${a.memberId}__${a.date}`, a);
   }
 
-  async function handleToggleStatus(memberId: string) {
-    const current = memberStatus[memberId] ?? "MONTHLY";
-    const next: PaymentType = current === "MONTHLY" ? "VISITOR" : "MONTHLY";
+  async function applyStatusChange(memberId: string, next: PaymentType) {
     setMemberStatus((prev) => ({ ...prev, [memberId]: next }));
     await setMemberMonthStatus(db, { memberId, month: selectedMonth, type: next });
+  }
+
+  function handleToggleStatus(memberId: string) {
+    // 初回(まだ明示的に設定されていない場合)はそのまま設定するが、
+    // 一度設定した後の変更は誤操作防止のため確認ダイアログを挟む。
+    const alreadySet = memberStatus[memberId] !== undefined;
+    const current = memberStatus[memberId] ?? "MONTHLY";
+    const next: PaymentType = current === "MONTHLY" ? "VISITOR" : "MONTHLY";
+    const currentLabel = current === "MONTHLY" ? "月謝" : "ビジター";
+    const nextLabel = next === "MONTHLY" ? "月謝" : "ビジター";
+
+    if (!alreadySet) {
+      applyStatusChange(memberId, next);
+      return;
+    }
+
+    Alert.alert(
+      "区分を変更しますか？",
+      `${currentLabel}から${nextLabel}に変更します。`,
+      [
+        { text: "キャンセル", style: "cancel" },
+        {
+          text: "変更する",
+          onPress: () => applyStatusChange(memberId, next),
+        },
+      ],
+    );
   }
 
   return (
