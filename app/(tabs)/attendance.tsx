@@ -1,10 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  Stack,
-  useFocusEffect,
-  useLocalSearchParams,
-  useRouter,
-} from "expo-router";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSQLiteContext } from "expo-sqlite";
 import {
@@ -18,9 +13,9 @@ import {
   type PaymentType,
   type PracticeDay,
 } from "@/lib/db";
-import { todayIso } from "@/lib/format";
+import { formatDate, todayIso } from "@/lib/format";
 import { colors } from "@/lib/theme";
-import { EmptyState, Screen } from "@/components/ui";
+import { EmptyState, Screen, ScreenTitle } from "@/components/ui";
 import { AppButton } from "@/components/AppButton";
 import { AppCheckbox } from "@/components/AppCheckbox";
 import { PracticeDaySelectField } from "@/components/PracticeDaySelectField";
@@ -52,6 +47,7 @@ export default function AttendanceScreen() {
   const [checked, setChecked] = useState<Record<string, boolean>>({});
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [feedback, setFeedback] = useState<string | null>(null);
 
   const didInit = useRef(false);
 
@@ -105,6 +101,7 @@ export default function AttendanceScreen() {
 
   function handleDateChange(newDate: string) {
     setDate(newDate);
+    setFeedback(null);
     router.setParams({ date: newDate });
   }
 
@@ -121,6 +118,7 @@ export default function AttendanceScreen() {
 
   function toggleChecked(memberId: string) {
     setChecked((prev) => ({ ...prev, [memberId]: !(prev[memberId] ?? false) }));
+    setFeedback(null);
   }
 
   async function handleSave() {
@@ -135,7 +133,7 @@ export default function AttendanceScreen() {
         }
       }
       await Promise.all(ops);
-      router.back();
+      setFeedback(`✓ ${formatDate(date)}の出欠を保存しました`);
     } finally {
       setSaving(false);
     }
@@ -143,7 +141,6 @@ export default function AttendanceScreen() {
 
   return (
     <Screen>
-      <Stack.Screen options={{ title: "出欠確認" }} />
       <FlatList
         contentContainerStyle={styles.wrap}
         data={loaded ? members : []}
@@ -151,6 +148,7 @@ export default function AttendanceScreen() {
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={
           <View style={styles.header}>
+            <ScreenTitle title="出欠確認" subtitle="練習日ごとに出欠を記録します。" />
             <PracticeDaySelectField
               testID="attendance-date"
               label="日付"
@@ -159,7 +157,7 @@ export default function AttendanceScreen() {
               practiceDays={practiceDays}
             />
             <Text style={styles.subtitle}>
-              出欠を記録します。支払いの記録は「入力」タブから別途行ってください。
+              支払いの記録は「入力」タブから別途行ってください。
             </Text>
             <Text style={styles.subtitleNote}>
               ビジターとして出席した人は、その場で支払い義務が発生します（未払いとして会計表に表示されます）。区分は会計表の名前横で変更できます。
@@ -212,6 +210,11 @@ export default function AttendanceScreen() {
                 onPress={handleSave}
                 disabled={saving}
               />
+              {feedback ? (
+                <Text testID="attendance-feedback" style={styles.feedbackText}>
+                  {feedback}
+                </Text>
+              ) : null}
             </View>
           ) : null
         }
@@ -257,5 +260,11 @@ const styles = StyleSheet.create({
   statusChipText: { fontSize: 12, fontWeight: "700", color: colors.monthlyText },
   statusChipTextVisitor: { color: colors.visitorText },
   separator: { height: 10 },
-  footer: { marginTop: 16 },
+  footer: { marginTop: 16, gap: 12 },
+  feedbackText: {
+    textAlign: "center",
+    color: colors.green,
+    fontWeight: "700",
+    fontSize: 14,
+  },
 });

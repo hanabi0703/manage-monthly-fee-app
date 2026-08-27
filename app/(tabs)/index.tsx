@@ -176,23 +176,15 @@ export default function DashboardScreen() {
           <Text style={styles.summaryText}>
             練習日 {practiceDayCount}日 ・ 集金 {formatYen(totalCollected)}
           </Text>
-          <Pressable
-            testID="fee-history-link"
-            style={styles.feeLink}
-            onPress={() => router.push(`/fee-history/${selectedMonth}`)}
-            hitSlop={8}
-          >
-            <Text style={styles.feeText}>月謝額 {formatYen(monthlyFee)}</Text>
-            <Text style={styles.feeLinkChevron}>›</Text>
-          </Pressable>
+          <Text style={styles.feeText}>月謝額 {formatYen(monthlyFee)}</Text>
         </AppCard>
 
         <View style={styles.attendanceButtonWrap}>
           <AppButton
-            testID="attendance-today-button"
-            title="✓ 今日の出欠を取る"
+            testID="change-fee-button"
+            title="月謝を変更する"
             variant="green"
-            onPress={() => router.push(`/attendance/${todayIso()}`)}
+            onPress={() => router.push(`/fee-history/${selectedMonth}`)}
           />
         </View>
 
@@ -214,7 +206,7 @@ export default function DashboardScreen() {
                     key={d}
                     testID={`accounting-date-header-${d}`}
                     style={[styles.cell, styles.dateCol, styles.headCell]}
-                    onPress={() => router.push(`/attendance/${d}`)}
+                    onPress={() => router.push({ pathname: "/attendance", params: { date: d } })}
                   >
                     <Text style={styles.headTextLink}>{formatShortDate(d)}</Text>
                   </Pressable>
@@ -394,15 +386,7 @@ const styles = StyleSheet.create({
   monthNavButtonText: { fontSize: 15, fontWeight: "700", color: colors.text },
   monthLabel: { fontSize: 22, fontWeight: "800", color: colors.text, minWidth: 120, textAlign: "center" },
   summaryText: { textAlign: "center", color: colors.textMuted, fontSize: 15 },
-  feeLink: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 2,
-    minHeight: 32,
-  },
-  feeText: { color: colors.green, fontSize: 14, fontWeight: "700" },
-  feeLinkChevron: { color: colors.green, fontSize: 16, fontWeight: "700" },
+  feeText: { textAlign: "center", color: colors.green, fontSize: 14, fontWeight: "700" },
   attendanceButtonWrap: { marginBottom: 18 },
   table: { borderWidth: 1, borderColor: colors.border, borderRadius: 16, overflow: "hidden" },
   headRow: { flexDirection: "row", backgroundColor: colors.tableHeadBg },

@@ -30,6 +30,13 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="attendance"
+        options={{
+          title: "出欠",
+          tabBarIcon: ({ color }) => tabIcon("calendar", color),
+        }}
+      />
+      <Tabs.Screen
         name="entry"
         options={{
           title: "入力",
