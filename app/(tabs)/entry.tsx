@@ -12,13 +12,14 @@ import {
   listMemberMonthStatusForMember,
   listPaymentsForMember,
   listPracticeDays,
+  MonthLockedError,
   VISITOR_FEE,
   type Member,
   type PaymentType,
   type PracticeDay,
 } from "@/lib/db";
 import { computeBalance } from "@/lib/balance";
-import { currentMonthIso, formatDate, formatYen, shiftMonth, todayIso } from "@/lib/format";
+import { currentMonthIso, formatDate, formatMonthLabel, formatYen, shiftMonth, todayIso } from "@/lib/format";
 import { colors } from "@/lib/theme";
 import { Screen } from "@/components/ui";
 import { AppCard } from "@/components/AppCard";
@@ -169,28 +170,31 @@ export default function EntryScreen() {
   }
 
   async function handleSelectShortfall() {
-    // 不足金支払いの初期金額は、この月だけの不足分ではなく、これまでの月謝の
-    // マイナス分(繰越の未払金)全体を相殺できる金額をデフォルトにする。
-    // balanceは実際に記録された支払いの差額しか見ないため、選択中の日付の月に
-    // 一切支払いがない場合は、その月の月謝額も別途加算する。
-    const month = date.slice(0, 7);
+    // 不足金支払いは特定の練習日に紐づかない(日付は空欄で登録する)ため、
+    // 初期金額はこれまでの月謝の不足分(繰越の未払金 + まだ一切支払いのない
+    // 月の月謝額)をまとめて相殺できる金額をデフォルトにする。
+    // balanceは実際に記録された支払いの差額しか見ないため、対象月に一切
+    // 支払いがない場合は、その月の月謝額を別途差し引いて不足分に含める。
+    const month = date ? date.slice(0, 7) : currentMonthIso();
     const memberPayments = await listPaymentsForMember(db, memberId);
     const monthlyPayments = memberPayments.filter((p) => p.type === "MONTHLY");
     const months = Array.from(
-      new Set([...monthlyPayments.map((p) => p.date.slice(0, 7)), month]),
+      new Set([...monthlyPayments.map((p) => p.date.slice(0, 7)).filter(Boolean), month]),
     );
     const fees = await getFeeForMonths(db, months);
     const balance = computeBalance(monthlyPayments, (m) => fees[m] ?? 0);
     const paidThisMonth = monthlyPayments
       .filter((p) => p.date.slice(0, 7) === month)
       .reduce((sum, p) => sum + p.amount, 0);
-    const unpaidThisMonth = paidThisMonth === 0 ? (fees[month] ?? currentFee) : 0;
-    setAmount(String(Math.max(0, -balance) + unpaidThisMonth));
+    const effectiveBalance =
+      paidThisMonth === 0 ? balance - (fees[month] ?? currentFee) : balance;
+    setAmount(String(Math.max(0, -effectiveBalance)));
     setIsShortfallMode(true);
   }
 
   const showShortfallOption = !!memberId && type === "MONTHLY";
-  const canSubmit = date.length === 10 && memberId.length > 0 && amount.length > 0;
+  const canSubmit =
+    memberId.length > 0 && amount.length > 0 && (isShortfallMode || date.length === 10);
 
   async function handleSubmit() {
     const amountNum = Number(amount);
@@ -202,28 +206,43 @@ export default function EntryScreen() {
       Alert.alert("メンバーを選択してください");
       return;
     }
+    // 不足金支払いは特定の練習日に紐づかないため、日付は空欄で登録する。
+    const paymentDate = isShortfallMode ? "" : date;
     setSubmitting(true);
     try {
       const existing = await listPaymentsForMember(db, memberId);
-      if (existing.some((p) => p.date === date)) {
+      if (paymentDate && existing.some((p) => p.date === paymentDate)) {
         Alert.alert(
           "支払い済みです",
-          `${formatDate(date)}はすでにこのメンバーの支払いが記録されています。`,
+          `${formatDate(paymentDate)}はすでにこのメンバーの支払いが記録されています。`,
         );
         return;
       }
-      const monthStatus = await getMemberMonthStatus(db, memberId, date.slice(0, 7));
-      if (monthStatus !== type) {
-        const memberName = members.find((m) => m.id === memberId)?.name ?? "";
-        const statusLabel = monthStatus === "MONTHLY" ? "月謝" : "ビジター";
-        const typeLabel = type === "MONTHLY" ? "月謝" : "ビジター";
-        Alert.alert(
-          "区分が一致しません",
-          `${memberName}さんは今月「${statusLabel}」として設定されています。「${typeLabel}」として登録することはできません。会計表の名前横で区分を変更してから登録してください。`,
-        );
-        return;
+      if (!isShortfallMode) {
+        const monthStatus = await getMemberMonthStatus(db, memberId, paymentDate.slice(0, 7));
+        if (monthStatus !== type) {
+          const memberName = members.find((m) => m.id === memberId)?.name ?? "";
+          const statusLabel = monthStatus === "MONTHLY" ? "月謝" : "ビジター";
+          const typeLabel = type === "MONTHLY" ? "月謝" : "ビジター";
+          Alert.alert(
+            "区分が一致しません",
+            `${memberName}さんは今月「${statusLabel}」として設定されています。「${typeLabel}」として登録することはできません。会計表の名前横で区分を変更してから登録してください。`,
+          );
+          return;
+        }
       }
-      await createPaymentForMember(db, { memberId, date, amount: amountNum, type });
+      try {
+        await createPaymentForMember(db, { memberId, date: paymentDate, amount: amountNum, type });
+      } catch (err) {
+        if (err instanceof MonthLockedError) {
+          Alert.alert(
+            "登録できません",
+            `${formatMonthLabel(err.month)}は承認済みのため、支払いを登録できません。`,
+          );
+          return;
+        }
+        throw err;
+      }
       const memberName = members.find((m) => m.id === memberId)?.name ?? "";
       setFeedback(`✓ ${memberName}さんの支払い（${formatYen(amountNum)}）を登録しました`);
       setMemberId("");

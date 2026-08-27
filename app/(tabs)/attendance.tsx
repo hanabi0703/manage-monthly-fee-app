@@ -3,6 +3,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSQLiteContext } from "expo-sqlite";
 import {
+  isMonthApproved,
   listAttendanceForDate,
   listMemberMonthStatusForMonth,
   listMembers,
@@ -45,6 +46,7 @@ export default function AttendanceScreen() {
   const [practiceDays, setPracticeDays] = useState<PracticeDay[]>([]);
   const [memberStatus, setMemberStatus] = useState<Record<string, PaymentType>>({});
   const [checked, setChecked] = useState<Record<string, boolean>>({});
+  const [monthApproved, setMonthApproved] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -83,7 +85,8 @@ export default function AttendanceScreen() {
       listMembers(db),
       listAttendanceForDate(db, date),
       listMemberMonthStatusForMonth(db, date.slice(0, 7)),
-    ]).then(([m, attendance, statusMap]) => {
+      isMonthApproved(db, date.slice(0, 7)),
+    ]).then(([m, attendance, statusMap, approved]) => {
       if (cancelled) return;
       const initial: Record<string, boolean> = {};
       for (const member of m) {
@@ -92,6 +95,7 @@ export default function AttendanceScreen() {
       setMembers(m);
       setChecked(initial);
       setMemberStatus(statusMap);
+      setMonthApproved(approved);
       setLoaded(true);
     });
     return () => {
@@ -117,11 +121,13 @@ export default function AttendanceScreen() {
   );
 
   function toggleChecked(memberId: string) {
+    if (monthApproved) return;
     setChecked((prev) => ({ ...prev, [memberId]: !(prev[memberId] ?? false) }));
     setFeedback(null);
   }
 
   async function handleSave() {
+    if (monthApproved) return;
     setSaving(true);
     try {
       const ops: Promise<void>[] = [];
@@ -162,6 +168,11 @@ export default function AttendanceScreen() {
             <Text style={styles.countTextVisitor}>うちビジター {visitorCheckedCount}人</Text>
           ) : null}
         </View>
+        {monthApproved ? (
+          <Text testID="attendance-locked-note" style={styles.lockedNote}>
+            この月は承認済みのため、出欠を変更できません。
+          </Text>
+        ) : null}
         {loaded && date && members.length === 0 ? (
           <EmptyState>
             まだメンバーが登録されていません。「メンバー」タブから追加してください。
@@ -181,6 +192,7 @@ export default function AttendanceScreen() {
               testID={`attendance-row-${item.id}`}
               style={styles.row}
               onPress={() => toggleChecked(item.id)}
+              disabled={monthApproved}
             >
               <View style={styles.rowLeft}>
                 <AppCheckbox
@@ -206,7 +218,7 @@ export default function AttendanceScreen() {
                 testID="attendance-save"
                 title={saving ? "保存中..." : "保存する"}
                 onPress={handleSave}
-                disabled={saving}
+                disabled={saving || monthApproved}
               />
               {feedback ? (
                 <Text testID="attendance-feedback" style={styles.feedbackText}>
@@ -226,6 +238,7 @@ const styles = StyleSheet.create({
   header: { gap: 8, marginBottom: 8, zIndex: 10 },
   subtitle: { fontSize: 13, color: colors.textMuted, lineHeight: 19, marginTop: 6 },
   subtitleNote: { fontSize: 12, color: colors.unpaidText, lineHeight: 18 },
+  lockedNote: { fontSize: 12, color: colors.textMuted, lineHeight: 18, fontWeight: "700" },
   countRow: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 4 },
   countText: { fontSize: 13, color: colors.green, fontWeight: "700" },
   countTextVisitor: { fontSize: 13, color: colors.unpaidText, fontWeight: "700" },

@@ -3,7 +3,9 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSQLiteContext } from "expo-sqlite";
 import {
+  approveMonth,
   getFeeForMonth,
+  isMonthApproved,
   listAttendance,
   listMemberMonthStatusForMonth,
   listMembers,
@@ -38,6 +40,7 @@ export default function DashboardScreen() {
   const [memberStatus, setMemberStatus] = useState<Record<string, PaymentType>>({});
   const [dateKeys, setDateKeys] = useState<string[]>([]);
   const [monthlyFee, setMonthlyFee] = useState(0);
+  const [approved, setApproved] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
   const didInit = useRef(false);
@@ -61,9 +64,14 @@ export default function DashboardScreen() {
         listPracticeDaysForMonth(db, month),
         listMemberMonthStatusForMonth(db, month),
         getFeeForMonth(db, month),
-      ]).then(([m, allPayments, allAttendance, practiceDays, statusMap, fee]) => {
+        isMonthApproved(db, month),
+      ]).then(([m, allPayments, allAttendance, practiceDays, statusMap, fee, monthApproved]) => {
         if (cancelled) return;
-        const monthPayments = allPayments.filter((p) => p.date.slice(0, 7) === month);
+        // 不足金支払いは日付が空欄(特定の練習日に紐づかない)なので、
+        // 支払った月(createdAt)をその月の集金として扱う。
+        const monthPayments = allPayments.filter(
+          (p) => (p.date || p.createdAt).slice(0, 7) === month,
+        );
         const monthAttendance = allAttendance.filter((a) => a.date.slice(0, 7) === month);
         const dates = practiceDays.map((d) => d.date).sort((a, b) => a.localeCompare(b));
         setMembers(m);
@@ -72,6 +80,7 @@ export default function DashboardScreen() {
         setMemberStatus(statusMap);
         setDateKeys(dates);
         setMonthlyFee(fee);
+        setApproved(monthApproved);
         setLoaded(true);
       });
       return () => {
@@ -100,12 +109,60 @@ export default function DashboardScreen() {
     attendanceMap.set(`${a.memberId}__${a.date}`, a);
   }
 
+  const memberRows = members.map((m) => {
+    const memberTotal = payments
+      .filter((p) => p.memberId === m.id)
+      .reduce((sum, p) => sum + p.amount, 0);
+    const status = memberStatus[m.id] ?? "MONTHLY";
+    const isVisitor = status === "VISITOR";
+    const monthlyPaidTotal = payments
+      .filter((p) => p.memberId === m.id && p.type === "MONTHLY")
+      .reduce((sum, p) => sum + p.amount, 0);
+    const showMonthlyUnpaid = !isVisitor && monthlyPaidTotal < monthlyFee;
+    const hasUnpaidVisitorDate =
+      isVisitor &&
+      dateKeys.some((d) => {
+        const key = `${m.id}__${d}`;
+        if (!attendanceMap.get(key)) return false;
+        const cellPayments = cellMap.get(key) ?? [];
+        return !cellPayments.some((p) => p.type === "VISITOR");
+      });
+    return { member: m, memberTotal, isVisitor, showMonthlyUnpaid, hasUnpaidVisitorDate };
+  });
+
+  const allMembersPaid =
+    loaded &&
+    memberRows.length > 0 &&
+    dateKeys.length > 0 &&
+    memberRows.every((r) => !r.showMonthlyUnpaid && !r.hasUnpaidVisitorDate);
+
   async function applyStatusChange(memberId: string, next: PaymentType) {
     setMemberStatus((prev) => ({ ...prev, [memberId]: next }));
     await setMemberMonthStatus(db, { memberId, month: selectedMonth, type: next });
   }
 
+  function handleApproveMonth() {
+    Alert.alert(
+      "この月を承認しますか？",
+      "承認すると、この月の支払い・出欠・区分・月謝設定は変更できなくなります。この操作は取り消せません。",
+      [
+        { text: "キャンセル", style: "cancel" },
+        {
+          text: "承認する",
+          onPress: async () => {
+            await approveMonth(db, selectedMonth);
+            setApproved(true);
+          },
+        },
+      ],
+    );
+  }
+
   function handleToggleStatus(memberId: string) {
+    if (approved) {
+      Alert.alert("変更できません", "承認済みの月は区分を変更できません。");
+      return;
+    }
     const alreadySet = memberStatus[memberId] !== undefined;
     const current = memberStatus[memberId] ?? "MONTHLY";
     const next: PaymentType = current === "MONTHLY" ? "VISITOR" : "MONTHLY";
@@ -177,6 +234,11 @@ export default function DashboardScreen() {
             練習日 {practiceDayCount}日 ・ 集金 {formatYen(totalCollected)}
           </Text>
           <Text style={styles.feeText}>月謝額 {formatYen(monthlyFee)}</Text>
+          {approved ? (
+            <View testID="month-approved-badge" style={styles.approvedBadge}>
+              <Text style={styles.approvedBadgeText}>承認済み・ロック中</Text>
+            </View>
+          ) : null}
         </AppCard>
 
         <View style={styles.attendanceButtonWrap}>
@@ -185,8 +247,19 @@ export default function DashboardScreen() {
             title="月謝を変更する"
             variant="green"
             onPress={() => router.push(`/fee-history/${selectedMonth}`)}
+            disabled={approved}
           />
         </View>
+
+        {loaded && !approved && allMembersPaid ? (
+          <View style={styles.attendanceButtonWrap}>
+            <AppButton
+              testID="approve-month-button"
+              title="この月を承認する"
+              onPress={handleApproveMonth}
+            />
+          </View>
+        ) : null}
 
         {loaded && members.length === 0 ? (
           <EmptyState>まだメンバーが登録されていません。「入力」タブから記録してください。</EmptyState>
@@ -215,24 +288,7 @@ export default function DashboardScreen() {
                   <Text style={styles.headText}>合計</Text>
                 </View>
               </View>
-              {members.map((m) => {
-                const memberTotal = payments
-                  .filter((p) => p.memberId === m.id)
-                  .reduce((sum, p) => sum + p.amount, 0);
-                const status = memberStatus[m.id] ?? "MONTHLY";
-                const isVisitor = status === "VISITOR";
-                const monthlyPaidTotal = payments
-                  .filter((p) => p.memberId === m.id && p.type === "MONTHLY")
-                  .reduce((sum, p) => sum + p.amount, 0);
-                const showMonthlyUnpaid = !isVisitor && monthlyPaidTotal < monthlyFee;
-                const hasUnpaidVisitorDate =
-                  isVisitor &&
-                  dateKeys.some((d) => {
-                    const key = `${m.id}__${d}`;
-                    if (!attendanceMap.get(key)) return false;
-                    const cellPayments = cellMap.get(key) ?? [];
-                    return !cellPayments.some((p) => p.type === "VISITOR");
-                  });
+              {memberRows.map(({ member: m, memberTotal, isVisitor, showMonthlyUnpaid, hasUnpaidVisitorDate }) => {
                 return (
                 <View key={m.id} style={styles.row}>
                   <View style={[styles.cell, styles.memberCol]}>
@@ -247,6 +303,7 @@ export default function DashboardScreen() {
                       testID={`member-status-toggle-${m.id}`}
                       style={[styles.statusChip, isVisitor && styles.statusChipVisitor]}
                       onPress={() => handleToggleStatus(m.id)}
+                      disabled={approved}
                       hitSlop={4}
                     >
                       <Text
@@ -387,6 +444,15 @@ const styles = StyleSheet.create({
   monthLabel: { fontSize: 22, fontWeight: "800", color: colors.text, minWidth: 120, textAlign: "center" },
   summaryText: { textAlign: "center", color: colors.textMuted, fontSize: 15 },
   feeText: { textAlign: "center", color: colors.green, fontSize: 14, fontWeight: "700" },
+  approvedBadge: {
+    alignSelf: "center",
+    backgroundColor: colors.tableHeadBg,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    marginTop: 2,
+  },
+  approvedBadgeText: { fontSize: 12, fontWeight: "700", color: colors.textMuted },
   attendanceButtonWrap: { marginBottom: 18 },
   table: { borderWidth: 1, borderColor: colors.border, borderRadius: 16, overflow: "hidden" },
   headRow: { flexDirection: "row", backgroundColor: colors.tableHeadBg },

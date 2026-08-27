@@ -46,15 +46,24 @@ export function PaymentFields({
 }: Props) {
   return (
     <>
-      <PracticeDaySelectField
-        testID={testIDs?.date}
-        label={dateLabel}
-        value={date}
-        onChange={onDateChange}
-        practiceDays={practiceDays}
-        emptyTitle={dateEmptyTitle}
-        emptyHint={dateEmptyHint}
-      />
+      {isShortfallMode ? (
+        <View style={styles.field}>
+          <Text style={styles.label}>{dateLabel}</Text>
+          <Text style={styles.shortfallNote}>
+            不足金支払いは練習日に紐づきません。支払った日として本日の日付が記録されます。
+          </Text>
+        </View>
+      ) : (
+        <PracticeDaySelectField
+          testID={testIDs?.date}
+          label={dateLabel}
+          value={date}
+          onChange={onDateChange}
+          practiceDays={practiceDays}
+          emptyTitle={dateEmptyTitle}
+          emptyHint={dateEmptyHint}
+        />
+      )}
       <View style={styles.field}>
         <Text style={styles.label}>もらった金額</Text>
         {amountEditable ? (
@@ -111,6 +120,7 @@ export function PaymentFields({
 const styles = StyleSheet.create({
   field: { gap: 8 },
   label: { fontSize: 15, fontWeight: "700", color: colors.text },
+  shortfallNote: { fontSize: 13, color: colors.textMuted, lineHeight: 19 },
   amountDisplay: {
     minHeight: 54,
     paddingHorizontal: 16,

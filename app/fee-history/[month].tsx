@@ -2,7 +2,13 @@ import { useCallback, useState } from "react";
 import { Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSQLiteContext } from "expo-sqlite";
-import { clearMonthFeeOverride, getBaseFee, getMonthFeeOverride, setMonthFeeOverride } from "@/lib/db";
+import {
+  clearMonthFeeOverride,
+  getBaseFee,
+  getMonthFeeOverride,
+  isMonthApproved,
+  setMonthFeeOverride,
+} from "@/lib/db";
 import { formatMonthLabel, formatYen } from "@/lib/format";
 import { colors } from "@/lib/theme";
 import { Screen, ScreenTitle } from "@/components/ui";
@@ -17,18 +23,20 @@ export default function MonthFeeSettingScreen() {
   const [baseFee, setBaseFee] = useState(0);
   const [override, setOverride] = useState<number | null>(null);
   const [amount, setAmount] = useState("");
+  const [approved, setApproved] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(() => {
     if (!month) return () => {};
     let cancelled = false;
-    Promise.all([getBaseFee(db), getMonthFeeOverride(db, month)]).then(
-      ([base, monthOverride]) => {
+    Promise.all([getBaseFee(db), getMonthFeeOverride(db, month), isMonthApproved(db, month)]).then(
+      ([base, monthOverride, monthApproved]) => {
         if (cancelled) return;
         setBaseFee(base);
         setOverride(monthOverride);
         setAmount(String(monthOverride ?? base));
+        setApproved(monthApproved);
         setLoaded(true);
       },
     );
@@ -40,7 +48,7 @@ export default function MonthFeeSettingScreen() {
   useFocusEffect(load);
 
   async function handleSave() {
-    if (!month) return;
+    if (!month || approved) return;
     const amountNum = Number(amount);
     if (!amount || !Number.isFinite(amountNum) || amountNum < 0) return;
     setSaving(true);
@@ -53,7 +61,7 @@ export default function MonthFeeSettingScreen() {
   }
 
   async function handleClear() {
-    if (!month) return;
+    if (!month || approved) return;
     setSaving(true);
     try {
       await clearMonthFeeOverride(db, month);
@@ -88,6 +96,11 @@ export default function MonthFeeSettingScreen() {
           {override !== null ? (
             <Text style={styles.overrideNote}>この月はイレギュラー設定が適用されています。</Text>
           ) : null}
+          {approved ? (
+            <Text testID="month-fee-locked-note" style={styles.lockedNote}>
+              この月は承認済みのため、月謝を変更できません。
+            </Text>
+          ) : null}
         </AppCard>
 
         {loaded ? (
@@ -99,12 +112,13 @@ export default function MonthFeeSettingScreen() {
               onChangeText={(t) => setAmount(t.replace(/[^0-9]/g, ""))}
               keyboardType="number-pad"
               placeholder="5000"
+              editable={!approved}
             />
             <AppButton
               testID="month-fee-save"
               title={saving ? "保存中..." : "この月だけ変更する"}
               onPress={handleSave}
-              disabled={!amount || saving}
+              disabled={!amount || saving || approved}
             />
             {override !== null ? (
               <AppButton
@@ -112,7 +126,7 @@ export default function MonthFeeSettingScreen() {
                 title="基本の月謝額に戻す"
                 variant="outline"
                 onPress={handleClear}
-                disabled={saving}
+                disabled={saving || approved}
               />
             ) : null}
           </AppCard>
@@ -130,5 +144,6 @@ const styles = StyleSheet.create({
   summaryValue: { fontSize: 18, fontWeight: "800", color: colors.text },
   summaryValueOverride: { color: colors.green },
   overrideNote: { fontSize: 12, color: colors.green, marginTop: 2 },
+  lockedNote: { fontSize: 12, color: colors.textMuted, fontWeight: "700", marginTop: 2 },
   form: { gap: 18 },
 });

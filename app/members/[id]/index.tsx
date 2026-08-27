@@ -9,13 +9,14 @@ import {
   listAttendanceForMember,
   listMemberMonthStatusForMember,
   listPaymentsForMember,
+  MonthLockedError,
   VISITOR_FEE,
   type Member,
   type Payment,
   type PaymentType,
 } from "@/lib/db";
 import { computeBalance } from "@/lib/balance";
-import { currentMonthIso, formatDate, formatMonthLabel, formatYen } from "@/lib/format";
+import { currentMonthIso, formatDate, formatYen } from "@/lib/format";
 import { colors } from "@/lib/theme";
 import { Badge, EmptyState, Screen, SectionLabel } from "@/components/ui";
 import { AppCard } from "@/components/AppCard";
@@ -70,7 +71,15 @@ export default function MemberDetailScreen() {
   useFocusEffect(load);
 
   async function handleDelete(paymentId: string) {
-    await deletePayment(db, paymentId);
+    try {
+      await deletePayment(db, paymentId);
+    } catch (err) {
+      if (err instanceof MonthLockedError) {
+        Alert.alert("削除できません", "承認済みの月の支払いは削除できません。");
+        return;
+      }
+      throw err;
+    }
     load();
   }
 
@@ -85,14 +94,15 @@ export default function MemberDetailScreen() {
     .reduce((sum, p) => sum + p.amount, 0);
   // balanceはcomputeBalance経由で実際の支払い記録から差額を計算するため、
   // 部分的な支払いがあればそこですでに不足分が反映される。今月一切払っていない
-  // (記録が無い)場合のみ、ここで月謝額まるごとを未払いとして追加する。
+  // (記録が無い)場合のみ、ここでbalanceから月謝額を差し引いて未払いに含める
+  // (加算ではなく減算にすることで、不足金支払いによる繰越credit分が
+  // 正しく相殺され、二重計上にならない)。
   const currentMonthUnpaid = currentMonthStatus === "MONTHLY" && paidThisMonth === 0;
-  const hasUnpaidItems = balance < 0 || currentMonthUnpaid || unpaidVisitorDates.length > 0;
+  const effectiveBalance = currentMonthUnpaid ? balance - currentMonthFee : balance;
+  const hasUnpaidItems = effectiveBalance < 0 || unpaidVisitorDates.length > 0;
   const hasAnyUnpaid = hasUnpaidItems;
   const totalUnpaidAmount =
-    Math.max(0, -balance) +
-    (currentMonthUnpaid ? currentMonthFee : 0) +
-    unpaidVisitorDates.length * VISITOR_FEE;
+    Math.max(0, -effectiveBalance) + unpaidVisitorDates.length * VISITOR_FEE;
 
   if (loaded && !member) {
     return (
@@ -135,16 +145,16 @@ export default function MemberDetailScreen() {
                     {formatYen(totalUnpaidAmount)}
                   </Text>
                   <Text style={styles.balanceNote}>
-                    {currentMonthUnpaid || balance < 0
+                    {effectiveBalance < 0
                       ? "月謝の支払いが標準額に対して不足しています。"
                       : "ビジター代の未払いがあります。"}
                   </Text>
                 </>
-              ) : balance > 0 ? (
+              ) : effectiveBalance > 0 ? (
                 <>
                   <Text style={styles.balanceLabel}>繰越金</Text>
                   <Text style={[styles.balanceValue, { color: colors.creditText }]}>
-                    {formatYen(balance)}
+                    {formatYen(effectiveBalance)}
                   </Text>
                   <Text style={styles.balanceNote}>
                     月謝を標準額より多く払っているため、繰り越されています。
@@ -161,18 +171,12 @@ export default function MemberDetailScreen() {
             {hasUnpaidItems ? (
               <AppCard style={styles.unpaidCard}>
                 <Text style={styles.unpaidCardTitle}>未払いの内容</Text>
-                {balance < 0 ? (
+                {effectiveBalance < 0 ? (
                   <View style={styles.unpaidItemRow}>
                     <Text style={styles.unpaidItemLabel}>月謝の不足分</Text>
-                    <Text style={styles.unpaidItemAmount}>{formatYen(Math.abs(balance))}</Text>
-                  </View>
-                ) : null}
-                {currentMonthUnpaid ? (
-                  <View style={styles.unpaidItemRow}>
-                    <Text style={styles.unpaidItemLabel}>
-                      {formatMonthLabel(currentMonth)}の月謝
+                    <Text style={styles.unpaidItemAmount}>
+                      {formatYen(Math.abs(effectiveBalance))}
                     </Text>
-                    <Text style={styles.unpaidItemAmount}>{formatYen(currentMonthFee)}</Text>
                   </View>
                 ) : null}
                 {unpaidVisitorDates.map((d) => (
@@ -201,7 +205,7 @@ export default function MemberDetailScreen() {
             <AppCard style={styles.paymentRow}>
               <View style={styles.paymentInfo}>
                 <Text style={styles.paymentDate}>
-                  参加日: {formatDate(item.date)}
+                  {item.date ? `参加日: ${formatDate(item.date)}` : "不足金支払い"}
                 </Text>
                 <Text style={styles.paidDate}>
                   支払日: {formatDate(paidDate)}

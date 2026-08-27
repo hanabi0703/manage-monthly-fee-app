@@ -13,6 +13,9 @@ export type Member = {
 
 export type Payment = {
   id: string;
+  /** The practice day this payment is for. Empty for a 不足金支払い
+   * (shortfall payment), which isn't tied to any specific day — only
+   * `createdAt` (the day it was actually paid) is recorded for those. */
   date: string;
   memberId: string;
   amount: number;
@@ -44,6 +47,23 @@ export type MonthSummary = {
 
 function generateId(): string {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/** Thrown when attempting to modify data belonging to an approved (locked) month. */
+export class MonthLockedError extends Error {
+  month: string;
+  constructor(month: string) {
+    super(`${month} is approved and locked.`);
+    this.name = "MonthLockedError";
+    this.month = month;
+  }
+}
+
+async function assertMonthNotLocked(db: SQLiteDatabase, month: string): Promise<void> {
+  if (!month) return;
+  if (await isMonthApproved(db, month)) {
+    throw new MonthLockedError(month);
+  }
 }
 
 export async function migrateDbIfNeeded(db: SQLiteDatabase) {
@@ -116,6 +136,11 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
       type TEXT NOT NULL CHECK (type IN ('MONTHLY', 'VISITOR')),
       created_at TEXT NOT NULL,
       UNIQUE (member_id, month)
+    );
+
+    CREATE TABLE IF NOT EXISTS month_approvals (
+      month TEXT PRIMARY KEY NOT NULL,
+      approved_at TEXT NOT NULL
     );
   `);
 
@@ -270,6 +295,16 @@ export async function deletePayment(
   db: SQLiteDatabase,
   id: string,
 ): Promise<void> {
+  const row = await db.getFirstAsync<{ date: string; created_at: string }>(
+    "SELECT date, created_at FROM payments WHERE id = ?",
+    id,
+  );
+  if (row) {
+    // 不足金支払い(dateが空欄)は支払った月(created_at)を対象月として扱う
+    // (会計表での集計と同じ基準)。
+    const effectiveMonth = (row.date || row.created_at).slice(0, 7);
+    await assertMonthNotLocked(db, effectiveMonth);
+  }
   await db.runAsync("DELETE FROM payments WHERE id = ?", id);
 }
 
@@ -319,6 +354,7 @@ export async function setMonthFeeOverride(
   month: string,
   amount: number,
 ): Promise<void> {
+  await assertMonthNotLocked(db, month);
   await db.runAsync("DELETE FROM month_fee_overrides WHERE month = ?", month);
   await db.runAsync(
     "INSERT INTO month_fee_overrides (id, month, amount, created_at) VALUES (?, ?, ?, ?)",
@@ -333,6 +369,7 @@ export async function clearMonthFeeOverride(
   db: SQLiteDatabase,
   month: string,
 ): Promise<void> {
+  await assertMonthNotLocked(db, month);
   await db.runAsync("DELETE FROM month_fee_overrides WHERE month = ?", month);
 }
 
@@ -407,6 +444,7 @@ export async function setMemberMonthStatus(
   db: SQLiteDatabase,
   input: { memberId: string; month: string; type: PaymentType },
 ): Promise<void> {
+  await assertMonthNotLocked(db, input.month);
   await db.runAsync(
     "DELETE FROM member_month_status WHERE member_id = ? AND month = ?",
     input.memberId,
@@ -431,6 +469,10 @@ export async function createPaymentForMember(
     type: PaymentType;
   },
 ): Promise<void> {
+  // 不足金支払い(dateが空欄)は支払った月(=今日の月)を対象月として扱う
+  // (会計表での集計と同じ基準)。
+  const effectiveMonth = input.date ? input.date.slice(0, 7) : new Date().toISOString().slice(0, 7);
+  await assertMonthNotLocked(db, effectiveMonth);
   await db.runAsync(
     "INSERT INTO payments (id, date, member_id, amount, type, created_at) VALUES (?, ?, ?, ?, ?, ?)",
     generateId(),
@@ -584,6 +626,7 @@ export async function setAttendance(
   db: SQLiteDatabase,
   input: { memberId: string; date: string },
 ): Promise<void> {
+  await assertMonthNotLocked(db, input.date.slice(0, 7));
   await db.runAsync(
     "DELETE FROM attendance WHERE date = ? AND member_id = ?",
     input.date,
@@ -604,6 +647,7 @@ export async function removeAttendance(
   db: SQLiteDatabase,
   input: { memberId: string; date: string },
 ): Promise<void> {
+  await assertMonthNotLocked(db, input.date.slice(0, 7));
   await db.runAsync(
     "DELETE FROM attendance WHERE date = ? AND member_id = ?",
     input.date,
@@ -642,4 +686,26 @@ export async function listMonths(db: SQLiteDatabase): Promise<MonthSummary[]> {
   }
 
   return Array.from(byMonth.values()).sort((a, b) => b.month.localeCompare(a.month));
+}
+
+/**
+ * A month ("YYYY-MM") that has been marked 承認済み (approved/closed). Once
+ * approved, that month's payments, attendance, member classification, and
+ * fee override can no longer be changed (see `assertMonthNotLocked`).
+ */
+export async function isMonthApproved(db: SQLiteDatabase, month: string): Promise<boolean> {
+  if (!month) return false;
+  const row = await db.getFirstAsync<{ month: string }>(
+    "SELECT month FROM month_approvals WHERE month = ?",
+    month,
+  );
+  return !!row;
+}
+
+export async function approveMonth(db: SQLiteDatabase, month: string): Promise<void> {
+  await db.runAsync(
+    "INSERT OR IGNORE INTO month_approvals (month, approved_at) VALUES (?, ?)",
+    month,
+    new Date().toISOString(),
+  );
 }
