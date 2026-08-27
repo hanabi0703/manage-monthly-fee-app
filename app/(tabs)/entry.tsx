@@ -17,6 +17,7 @@ import {
   type PaymentType,
   type PracticeDay,
 } from "@/lib/db";
+import { computeBalance } from "@/lib/balance";
 import { currentMonthIso, formatDate, formatYen, shiftMonth, todayIso } from "@/lib/format";
 import { colors } from "@/lib/theme";
 import { Screen } from "@/components/ui";
@@ -168,12 +169,23 @@ export default function EntryScreen() {
   }
 
   async function handleSelectShortfall() {
+    // 不足金支払いの初期金額は、この月だけの不足分ではなく、これまでの月謝の
+    // マイナス分(繰越の未払金)全体を相殺できる金額をデフォルトにする。
+    // balanceは実際に記録された支払いの差額しか見ないため、選択中の日付の月に
+    // 一切支払いがない場合は、その月の月謝額も別途加算する。
     const month = date.slice(0, 7);
     const memberPayments = await listPaymentsForMember(db, memberId);
-    const paidThisMonth = memberPayments
-      .filter((p) => p.type === "MONTHLY" && p.date.slice(0, 7) === month)
+    const monthlyPayments = memberPayments.filter((p) => p.type === "MONTHLY");
+    const months = Array.from(
+      new Set([...monthlyPayments.map((p) => p.date.slice(0, 7)), month]),
+    );
+    const fees = await getFeeForMonths(db, months);
+    const balance = computeBalance(monthlyPayments, (m) => fees[m] ?? 0);
+    const paidThisMonth = monthlyPayments
+      .filter((p) => p.date.slice(0, 7) === month)
       .reduce((sum, p) => sum + p.amount, 0);
-    setAmount(String(Math.max(0, currentFee - paidThisMonth)));
+    const unpaidThisMonth = paidThisMonth === 0 ? (fees[month] ?? currentFee) : 0;
+    setAmount(String(Math.max(0, -balance) + unpaidThisMonth));
     setIsShortfallMode(true);
   }
 

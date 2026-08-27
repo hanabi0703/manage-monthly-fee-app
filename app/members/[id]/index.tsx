@@ -87,8 +87,8 @@ export default function MemberDetailScreen() {
   // 部分的な支払いがあればそこですでに不足分が反映される。今月一切払っていない
   // (記録が無い)場合のみ、ここで月謝額まるごとを未払いとして追加する。
   const currentMonthUnpaid = currentMonthStatus === "MONTHLY" && paidThisMonth === 0;
-  const hasUnpaidItems = currentMonthUnpaid || unpaidVisitorDates.length > 0;
-  const hasAnyUnpaid = balance < 0 || hasUnpaidItems;
+  const hasUnpaidItems = balance < 0 || currentMonthUnpaid || unpaidVisitorDates.length > 0;
+  const hasAnyUnpaid = hasUnpaidItems;
   const totalUnpaidAmount =
     Math.max(0, -balance) +
     (currentMonthUnpaid ? currentMonthFee : 0) +
@@ -161,6 +161,12 @@ export default function MemberDetailScreen() {
             {hasUnpaidItems ? (
               <AppCard style={styles.unpaidCard}>
                 <Text style={styles.unpaidCardTitle}>未払いの内容</Text>
+                {balance < 0 ? (
+                  <View style={styles.unpaidItemRow}>
+                    <Text style={styles.unpaidItemLabel}>月謝の不足分</Text>
+                    <Text style={styles.unpaidItemAmount}>{formatYen(Math.abs(balance))}</Text>
+                  </View>
+                ) : null}
                 {currentMonthUnpaid ? (
                   <View style={styles.unpaidItemRow}>
                     <Text style={styles.unpaidItemLabel}>
