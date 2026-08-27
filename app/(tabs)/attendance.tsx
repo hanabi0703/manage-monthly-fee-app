@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
-import { Alert, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSQLiteContext } from "expo-sqlite";
 import {
   isMonthApproved,
@@ -19,6 +19,7 @@ import { formatDate, formatMonthLabel, todayIso } from "@/lib/format";
 import { colors } from "@/lib/theme";
 import { EmptyState, Screen, ScreenTitle } from "@/components/ui";
 import { AppButton } from "@/components/AppButton";
+import { AppCard } from "@/components/AppCard";
 import { AppCheckbox } from "@/components/AppCheckbox";
 import { PracticeDaySelectField } from "@/components/PracticeDaySelectField";
 
@@ -158,7 +159,7 @@ export default function AttendanceScreen() {
 
   return (
     <Screen>
-      <View style={styles.header}>
+      <ScrollView contentContainerStyle={styles.wrap} showsVerticalScrollIndicator={false}>
         <ScreenTitle title="出欠確認" subtitle="練習日ごとに出欠を記録します。" />
         <PracticeDaySelectField
           testID="attendance-date"
@@ -189,82 +190,74 @@ export default function AttendanceScreen() {
             まだメンバーが登録されていません。「メンバー」タブから追加してください。
           </EmptyState>
         ) : null}
-      </View>
-      <FlatList
-        contentContainerStyle={styles.wrap}
-        data={loaded ? members : []}
-        keyExtractor={(m) => m.id}
-        showsVerticalScrollIndicator={false}
-        renderItem={({ item }) => {
-          const isChecked = checked[item.id] ?? false;
-          const isVisitor = (memberStatus[item.id] ?? "MONTHLY") === "VISITOR";
-          return (
-            <Pressable
-              testID={`attendance-row-${item.id}`}
-              style={styles.row}
-              onPress={() => toggleChecked(item.id)}
-              disabled={monthApproved}
-            >
-              <View style={styles.rowLeft}>
-                <AppCheckbox
-                  testID={`attendance-checkbox-${item.id}`}
-                  checked={isChecked}
-                  onToggle={() => toggleChecked(item.id)}
-                />
-                <Text style={styles.name}>{item.name}</Text>
-              </View>
-              <View style={[styles.statusChip, isVisitor && styles.statusChipVisitor]}>
-                <Text style={[styles.statusChipText, isVisitor && styles.statusChipTextVisitor]}>
-                  {isVisitor ? "ビジター" : "月謝"}
-                </Text>
-              </View>
-            </Pressable>
-          );
-        }}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
-        ListFooterComponent={
-          loaded && members.length > 0 ? (
-            <View style={styles.footer}>
-              <AppButton
-                testID="attendance-save"
-                title={saving ? "保存中..." : "保存する"}
-                onPress={handleSave}
-                disabled={saving || monthApproved}
-              />
-              {feedback ? (
-                <Text testID="attendance-feedback" style={styles.feedbackText}>
-                  {feedback}
-                </Text>
-              ) : null}
-            </View>
-          ) : null
-        }
-      />
+        {loaded && members.length > 0 ? (
+          <AppCard style={styles.listCard}>
+            {members.map((item, index) => {
+              const isChecked = checked[item.id] ?? false;
+              const isVisitor = (memberStatus[item.id] ?? "MONTHLY") === "VISITOR";
+              return (
+                <Pressable
+                  key={item.id}
+                  testID={`attendance-row-${item.id}`}
+                  style={[styles.row, index > 0 && styles.rowDivider]}
+                  onPress={() => toggleChecked(item.id)}
+                  disabled={monthApproved}
+                >
+                  <View style={styles.rowLeft}>
+                    <AppCheckbox
+                      testID={`attendance-checkbox-${item.id}`}
+                      checked={isChecked}
+                      onToggle={() => toggleChecked(item.id)}
+                    />
+                    <Text style={styles.name}>{item.name}</Text>
+                  </View>
+                  <View style={[styles.statusChip, isVisitor && styles.statusChipVisitor]}>
+                    <Text style={[styles.statusChipText, isVisitor && styles.statusChipTextVisitor]}>
+                      {isVisitor ? "ビジター" : "月謝"}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </AppCard>
+        ) : null}
+        {loaded && members.length > 0 ? (
+          <View style={styles.footer}>
+            <AppButton
+              testID="attendance-save"
+              title={saving ? "保存中..." : "保存する"}
+              onPress={handleSave}
+              disabled={saving || monthApproved}
+            />
+            {feedback ? (
+              <Text testID="attendance-feedback" style={styles.feedbackText}>
+                {feedback}
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
+      </ScrollView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { padding: 20, paddingBottom: 48 },
-  header: { gap: 8, marginBottom: 8, zIndex: 10 },
+  wrap: { padding: 20, paddingBottom: 48, gap: 10 },
   subtitle: { fontSize: 13, color: colors.textMuted, lineHeight: 19, marginTop: 6 },
   subtitleNote: { fontSize: 12, color: colors.unpaidText, lineHeight: 18 },
   lockedNote: { fontSize: 12, color: colors.textMuted, lineHeight: 18, fontWeight: "700" },
   countRow: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: 4 },
   countText: { fontSize: 13, color: colors.green, fontWeight: "700" },
   countTextVisitor: { fontSize: 13, color: colors.unpaidText, fontWeight: "700" },
+  listCard: { padding: 0, overflow: "hidden" },
   row: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 14,
     paddingVertical: 12,
-    paddingHorizontal: 14,
-    minHeight: 54,
+    paddingHorizontal: 18,
   },
+  rowDivider: { borderTopWidth: 1, borderTopColor: colors.border },
   rowLeft: { flexDirection: "row", alignItems: "center", gap: 14 },
   name: { fontSize: 16, fontWeight: "700", color: colors.text },
   statusChip: {
@@ -281,8 +274,7 @@ const styles = StyleSheet.create({
   },
   statusChipText: { fontSize: 12, fontWeight: "700", color: colors.monthlyText },
   statusChipTextVisitor: { color: colors.visitorText },
-  separator: { height: 10 },
-  footer: { marginTop: 16, gap: 12 },
+  footer: { marginTop: 4, gap: 12 },
   feedbackText: {
     textAlign: "center",
     color: colors.green,
