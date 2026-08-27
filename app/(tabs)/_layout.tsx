@@ -1,9 +1,12 @@
 import { Tabs } from "expo-router";
 import type { ColorValue } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { colors } from "@/lib/theme";
 import { DoodleIcon, type DoodleIconName } from "@/components/DoodleIcon";
 
 export default function TabLayout() {
+  const insets = useSafeAreaInsets();
+
   return (
     <Tabs
       screenOptions={{
@@ -16,9 +19,9 @@ export default function TabLayout() {
         tabBarStyle: {
           backgroundColor: colors.card,
           borderTopColor: colors.border,
-          height: 64,
+          height: 64 + insets.bottom,
           paddingTop: 8,
-          paddingBottom: 8,
+          paddingBottom: 8 + insets.bottom,
         },
       }}
     >

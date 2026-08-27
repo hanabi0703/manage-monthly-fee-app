@@ -83,8 +83,16 @@ export default function MemberDetailScreen() {
   const paidThisMonth = monthlyPayments
     .filter((p) => p.date.slice(0, 7) === currentMonth)
     .reduce((sum, p) => sum + p.amount, 0);
-  const currentMonthUnpaid = currentMonthStatus === "MONTHLY" && paidThisMonth < currentMonthFee;
+  // balanceはcomputeBalance経由で実際の支払い記録から差額を計算するため、
+  // 部分的な支払いがあればそこですでに不足分が反映される。今月一切払っていない
+  // (記録が無い)場合のみ、ここで月謝額まるごとを未払いとして追加する。
+  const currentMonthUnpaid = currentMonthStatus === "MONTHLY" && paidThisMonth === 0;
   const hasUnpaidItems = currentMonthUnpaid || unpaidVisitorDates.length > 0;
+  const hasAnyUnpaid = balance < 0 || hasUnpaidItems;
+  const totalUnpaidAmount =
+    Math.max(0, -balance) +
+    (currentMonthUnpaid ? currentMonthFee : 0) +
+    unpaidVisitorDates.length * VISITOR_FEE;
 
   if (loaded && !member) {
     return (
@@ -120,14 +128,16 @@ export default function MemberDetailScreen() {
               支払い履歴と繰越金・未払金の状況です。
             </Text>
             <AppCard style={styles.balanceCard}>
-              {balance < 0 ? (
+              {hasAnyUnpaid ? (
                 <>
-                  <Text style={styles.balanceLabel}>未払金</Text>
+                  <Text style={styles.balanceLabel}>未払い</Text>
                   <Text style={[styles.balanceValue, { color: colors.unpaidText }]}>
-                    {formatYen(Math.abs(balance))}
+                    {formatYen(totalUnpaidAmount)}
                   </Text>
                   <Text style={styles.balanceNote}>
-                    月謝の合計支払額が標準額に対して不足しています。
+                    {currentMonthUnpaid || balance < 0
+                      ? "月謝の支払いが標準額に対して不足しています。"
+                      : "ビジター代の未払いがあります。"}
                   </Text>
                 </>
               ) : balance > 0 ? (

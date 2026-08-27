@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { colors } from "@/lib/theme";
 import { formatYen } from "@/lib/format";
 import { PracticeDaySelectField } from "@/components/PracticeDaySelectField";
@@ -12,13 +12,18 @@ type Props = {
   dateEmptyTitle?: string;
   dateEmptyHint?: string;
   amount: string;
+  amountEditable?: boolean;
+  onAmountChange?: (value: string) => void;
   type: PaymentType;
-  onTypeChange: (value: PaymentType) => void;
+  showShortfallOption?: boolean;
+  isShortfallMode?: boolean;
+  onSelectFullAmount?: () => void;
+  onSelectShortfall?: () => void;
   testIDs?: {
     date?: string;
     amount?: string;
-    typeMonthly?: string;
-    typeVisitor?: string;
+    typeFull?: string;
+    typeShortfall?: string;
   };
 };
 
@@ -30,8 +35,13 @@ export function PaymentFields({
   dateEmptyTitle,
   dateEmptyHint,
   amount,
+  amountEditable = false,
+  onAmountChange,
   type,
-  onTypeChange,
+  showShortfallOption = false,
+  isShortfallMode = false,
+  onSelectFullAmount,
+  onSelectShortfall,
   testIDs,
 }: Props) {
   return (
@@ -47,36 +57,52 @@ export function PaymentFields({
       />
       <View style={styles.field}>
         <Text style={styles.label}>もらった金額</Text>
-        <View testID={testIDs?.amount} style={styles.amountDisplay}>
-          <Text style={styles.amountText}>{formatYen(Number(amount || 0))}</Text>
-        </View>
+        {amountEditable ? (
+          <TextInput
+            testID={testIDs?.amount}
+            value={amount}
+            onChangeText={(t) => onAmountChange?.(t.replace(/[^0-9]/g, ""))}
+            keyboardType="number-pad"
+            placeholder="0"
+            placeholderTextColor={colors.placeholder}
+            style={styles.amountInput}
+          />
+        ) : (
+          <View testID={testIDs?.amount} style={styles.amountDisplay}>
+            <Text style={styles.amountText}>{formatYen(Number(amount || 0))}</Text>
+          </View>
+        )}
       </View>
       <View style={styles.field}>
         <Text style={styles.label}>区分</Text>
-        <View style={styles.typeRow}>
-          <Pressable
-            testID={testIDs?.typeMonthly}
-            style={[styles.typeButton, type === "MONTHLY" && styles.typeSelected]}
-            onPress={() => onTypeChange("MONTHLY")}
-          >
-            <Text
-              style={[styles.typeText, type === "MONTHLY" && styles.typeSelectedText]}
+        {type === "VISITOR" ? (
+          <View style={[styles.typeButton, styles.typeSelected]}>
+            <Text style={[styles.typeText, styles.typeSelectedText]}>ビジター</Text>
+          </View>
+        ) : (
+          <View style={styles.typeRow}>
+            <Pressable
+              testID={testIDs?.typeFull}
+              style={[styles.typeButton, !isShortfallMode && styles.typeSelected]}
+              onPress={onSelectFullAmount}
             >
-              月謝
-            </Text>
-          </Pressable>
-          <Pressable
-            testID={testIDs?.typeVisitor}
-            style={[styles.typeButton, type === "VISITOR" && styles.typeSelected]}
-            onPress={() => onTypeChange("VISITOR")}
-          >
-            <Text
-              style={[styles.typeText, type === "VISITOR" && styles.typeSelectedText]}
-            >
-              ビジター
-            </Text>
-          </Pressable>
-        </View>
+              <Text style={[styles.typeText, !isShortfallMode && styles.typeSelectedText]}>
+                月謝（全額）
+              </Text>
+            </Pressable>
+            {showShortfallOption ? (
+              <Pressable
+                testID={testIDs?.typeShortfall}
+                style={[styles.typeButton, isShortfallMode && styles.typeSelected]}
+                onPress={onSelectShortfall}
+              >
+                <Text style={[styles.typeText, isShortfallMode && styles.typeSelectedText]}>
+                  不足金支払い
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+        )}
       </View>
     </>
   );
@@ -95,6 +121,17 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   amountText: { fontSize: 17, color: colors.text, fontWeight: "700" },
+  amountInput: {
+    minHeight: 54,
+    paddingHorizontal: 16,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+    fontSize: 17,
+    fontWeight: "700",
+    color: colors.text,
+  },
   typeRow: { flexDirection: "row", gap: 10 },
   typeButton: {
     flex: 1,

@@ -50,6 +50,7 @@ export default function EntryScreen() {
   const [memberId, setMemberId] = useState("");
   const [amount, setAmount] = useState("");
   const [type, setType] = useState<PaymentType>("MONTHLY");
+  const [isShortfallMode, setIsShortfallMode] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
   const [practiceDays, setPracticeDays] = useState<PracticeDay[]>([]);
   const [selectableDatesForMember, setSelectableDatesForMember] = useState<PracticeDay[]>([]);
@@ -134,6 +135,7 @@ export default function EntryScreen() {
       setSelectableDatesForMember(eligible);
       const nextDate = eligible.some((d) => d.date === date) ? date : pickDefaultDate(eligible);
       setDate(nextDate);
+      setIsShortfallMode(false);
       if (nextDate) {
         setType(statusForDate(nextDate));
       }
@@ -144,20 +146,38 @@ export default function EntryScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [db, memberId, practiceDays]);
 
-  // もらう金額は選択できない: 月謝ならその月の月謝額、ビジターなら固定1,000円。
+  // もらう金額は基本選択できない: 月謝ならその月の月謝額、ビジターなら固定1,000円。
+  // 「不足金支払い」を選んでいる間だけ、金額を自由入力できる。
   useEffect(() => {
     if (!date) return;
     let cancelled = false;
     getFeeForMonth(db, date.slice(0, 7)).then((fee) => {
       if (cancelled) return;
       setCurrentFee(fee);
-      setAmount(type === "MONTHLY" ? String(fee) : String(VISITOR_FEE));
+      if (!isShortfallMode) {
+        setAmount(type === "MONTHLY" ? String(fee) : String(VISITOR_FEE));
+      }
     });
     return () => {
       cancelled = true;
     };
-  }, [db, date, type]);
+  }, [db, date, type, isShortfallMode]);
 
+  function handleSelectFullAmount() {
+    setIsShortfallMode(false);
+  }
+
+  async function handleSelectShortfall() {
+    const month = date.slice(0, 7);
+    const memberPayments = await listPaymentsForMember(db, memberId);
+    const paidThisMonth = memberPayments
+      .filter((p) => p.type === "MONTHLY" && p.date.slice(0, 7) === month)
+      .reduce((sum, p) => sum + p.amount, 0);
+    setAmount(String(Math.max(0, currentFee - paidThisMonth)));
+    setIsShortfallMode(true);
+  }
+
+  const showShortfallOption = !!memberId && type === "MONTHLY";
   const canSubmit = date.length === 10 && memberId.length > 0 && amount.length > 0;
 
   async function handleSubmit() {
@@ -196,6 +216,7 @@ export default function EntryScreen() {
       setFeedback(`✓ ${memberName}さんの支払い（${formatYen(amountNum)}）を登録しました`);
       setMemberId("");
       setType("MONTHLY");
+      setIsShortfallMode(false);
     } finally {
       setSubmitting(false);
     }
@@ -204,6 +225,7 @@ export default function EntryScreen() {
   function handleMemberChange(id: string) {
     setMemberId(id);
     setFeedback(null);
+    setIsShortfallMode(false);
   }
 
   return (
@@ -230,13 +252,18 @@ export default function EntryScreen() {
             dateEmptyTitle={memberId ? "未払いの練習日はありません" : undefined}
             dateEmptyHint={memberId ? "このメンバーの支払いはすべて完了しています。" : undefined}
             amount={amount}
+            amountEditable={isShortfallMode}
+            onAmountChange={setAmount}
             type={type}
-            onTypeChange={setType}
+            showShortfallOption={showShortfallOption}
+            isShortfallMode={isShortfallMode}
+            onSelectFullAmount={handleSelectFullAmount}
+            onSelectShortfall={handleSelectShortfall}
             testIDs={{
               date: "entry-date",
               amount: "entry-amount",
-              typeMonthly: "entry-type-monthly",
-              typeVisitor: "entry-type-visitor",
+              typeFull: "entry-type-full",
+              typeShortfall: "entry-type-shortfall",
             }}
           />
           <AppButton
