@@ -7,6 +7,7 @@ import {
   listMembers,
   listMemberMonthStatusForMonth,
   listPayments,
+  listUnpaidVisitorAttendance,
   upsertMemberByName,
 } from "@/lib/db";
 import { computeBalance } from "@/lib/balance";
@@ -18,7 +19,7 @@ import { AppButton } from "@/components/AppButton";
 import { AppInput } from "@/components/AppInput";
 import { DoodleIcon } from "@/components/DoodleIcon";
 
-type Row = { id: string; name: string; balance: number };
+type Row = { id: string; name: string; balance: number; hasUnpaidVisitorFee: boolean };
 
 export default function MembersScreen() {
   const db = useSQLiteContext();
@@ -35,7 +36,8 @@ export default function MembersScreen() {
       listMembers(db),
       listPayments(db),
       listMemberMonthStatusForMonth(db, currentMonth),
-    ]).then(async ([members, payments, currentMonthStatus]) => {
+      listUnpaidVisitorAttendance(db),
+    ]).then(async ([members, payments, currentMonthStatus, unpaidVisitorDates]) => {
       if (cancelled) return;
       const months = Array.from(
         new Set([...payments.map((p) => p.date.slice(0, 7)), currentMonth]),
@@ -43,6 +45,7 @@ export default function MembersScreen() {
       const fees = await getFeeForMonths(db, months);
       if (cancelled) return;
       const currentMonthFee = fees[currentMonth] ?? 0;
+      const unpaidVisitorMemberIds = new Set(unpaidVisitorDates.map((d) => d.memberId));
       const computed = members.map((m) => {
         const monthly = payments.filter(
           (p) => p.memberId === m.id && p.type === "MONTHLY",
@@ -61,11 +64,14 @@ export default function MembersScreen() {
           id: m.id,
           name: m.name,
           balance: effectiveBalance,
+          hasUnpaidVisitorFee: unpaidVisitorMemberIds.has(m.id),
         };
       });
-      // 未払い(balance < 0)のメンバーを優先し、それ以外は元の並び(名前昇順)を保つ。
+      // 未払い(月謝の繰越/未払金がマイナス、またはビジター代の未払いが1回でもある)
+      // のメンバーを優先し、それ以外は元の並び(名前昇順)を保つ。
+      const isUnpaid = (r: Row) => r.balance < 0 || r.hasUnpaidVisitorFee;
       const sorted = [...computed].sort(
-        (a, b) => Number(a.balance >= 0) - Number(b.balance >= 0),
+        (a, b) => Number(!isUnpaid(a)) - Number(!isUnpaid(b)),
       );
       setRows(sorted);
       setLoaded(true);
@@ -126,7 +132,7 @@ export default function MembersScreen() {
                   <View>
                     <View style={styles.nameRow}>
                       <Text style={styles.name}>{item.name}</Text>
-                      {item.balance < 0 ? (
+                      {item.balance < 0 || item.hasUnpaidVisitorFee ? (
                         <View testID={`member-unpaid-badge-${item.id}`} style={styles.unpaidBadge}>
                           <Text style={styles.unpaidBadgeText}>未払い</Text>
                         </View>
@@ -134,6 +140,8 @@ export default function MembersScreen() {
                     </View>
                     {item.balance < 0 ? (
                       <Badge label={`未払金 ${formatYen(Math.abs(item.balance))}`} tone="unpaid" />
+                    ) : item.hasUnpaidVisitorFee ? (
+                      <Badge label="ビジター代未払いあり" tone="unpaid" />
                     ) : item.balance > 0 ? (
                       <Badge label={`繰越金 ${formatYen(item.balance)}`} tone="credit" />
                     ) : (

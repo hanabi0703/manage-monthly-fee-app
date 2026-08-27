@@ -86,8 +86,6 @@ export default function DashboardScreen() {
   const practiceDayCount = dateKeys.length;
   const totalCollected = payments.reduce((sum, p) => sum + p.amount, 0);
   const today = todayIso();
-  const lastPracticeDay = dateKeys.length > 0 ? dateKeys[dateKeys.length - 1] : null;
-  const pastDueForMonth = !!lastPracticeDay && today >= lastPracticeDay;
 
   const cellMap = new Map<string, PaymentWithMember[]>();
   for (const p of payments) {
@@ -234,8 +232,15 @@ export default function DashboardScreen() {
                 const monthlyPaidTotal = payments
                   .filter((p) => p.memberId === m.id && p.type === "MONTHLY")
                   .reduce((sum, p) => sum + p.amount, 0);
-                const showMonthlyUnpaid =
-                  !isVisitor && pastDueForMonth && monthlyPaidTotal < monthlyFee;
+                const showMonthlyUnpaid = !isVisitor && monthlyPaidTotal < monthlyFee;
+                const hasUnpaidVisitorDate =
+                  isVisitor &&
+                  dateKeys.some((d) => {
+                    const key = `${m.id}__${d}`;
+                    if (!attendanceMap.get(key)) return false;
+                    const cellPayments = cellMap.get(key) ?? [];
+                    return !cellPayments.some((p) => p.type === "VISITOR");
+                  });
                 return (
                 <View key={m.id} style={styles.row}>
                   <View style={[styles.cell, styles.memberCol]}>
@@ -352,7 +357,7 @@ export default function DashboardScreen() {
                   })}
                   <View style={[styles.cell, styles.totalCol]}>
                     <Text style={styles.totalCell}>{formatYen(memberTotal)}</Text>
-                    {showMonthlyUnpaid ? (
+                    {showMonthlyUnpaid || hasUnpaidVisitorDate ? (
                       <View style={[styles.amountPill, styles.unpaidPill]}>
                         <Text style={[styles.amountPillText, styles.unpaidPillText]}>未払い</Text>
                       </View>

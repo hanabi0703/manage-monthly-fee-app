@@ -520,6 +520,26 @@ export async function listAttendance(db: SQLiteDatabase): Promise<Attendance[]> 
   }));
 }
 
+/**
+ * Every (memberId, date) where the member attended, was classified as
+ * VISITOR for that date's month, and has no matching VISITOR payment for
+ * that exact date yet.
+ */
+export async function listUnpaidVisitorAttendance(
+  db: SQLiteDatabase,
+): Promise<{ memberId: string; date: string }[]> {
+  const rows = await db.getAllAsync<{ member_id: string; date: string }>(
+    `SELECT a.member_id, a.date
+     FROM attendance a
+     LEFT JOIN member_month_status mms
+       ON mms.member_id = a.member_id AND mms.month = substr(a.date, 1, 7)
+     LEFT JOIN payments p
+       ON p.member_id = a.member_id AND p.date = a.date AND p.type = 'VISITOR'
+     WHERE COALESCE(mms.type, 'MONTHLY') = 'VISITOR' AND p.id IS NULL`,
+  );
+  return rows.map((r) => ({ memberId: r.member_id, date: r.date }));
+}
+
 export async function setAttendance(
   db: SQLiteDatabase,
   input: { memberId: string; date: string },
