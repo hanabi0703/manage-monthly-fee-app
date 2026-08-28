@@ -138,15 +138,33 @@ export default function EntryScreen() {
       const nextDate = eligible.some((d) => d.date === date) ? date : pickDefaultDate(eligible);
       setDate(nextDate);
       setIsShortfallMode(false);
-      if (nextDate) {
-        setType(statusForDate(nextDate));
-      }
     });
     return () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [db, memberId, practiceDays]);
+
+  // 区分(月謝/ビジター)は名前と日付の組み合わせから、会計表と同じ
+  // member_month_status(その月の区分設定)を参照して常に取得し直す。
+  // 日付ドロップダウンで別の日付(=別の月)を選び直した場合も追従する。
+  useEffect(() => {
+    if (!memberId || !date) {
+      setType("MONTHLY");
+      return;
+    }
+    let cancelled = false;
+    getMemberMonthStatus(db, memberId, date.slice(0, 7)).then((status) => {
+      if (cancelled) return;
+      setType(status);
+      if (status !== "MONTHLY") {
+        setIsShortfallMode(false);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [db, memberId, date]);
 
   // もらう金額は基本選択できない: 月謝ならその月の月謝額、ビジターなら固定1,000円。
   // 「不足金支払い」を選んでいる間だけ、金額を自由入力できる。
