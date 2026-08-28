@@ -67,3 +67,15 @@ function toHiragana(value: string): string {
 export function compareName(a: string, b: string): number {
   return nameCollator.compare(toHiragana(a), toHiragana(b));
 }
+
+/** Hiragana (U+3041-3096) shifted to its matching katakana codepoint. */
+export function toKatakana(value: string): string {
+  return value.replace(/[ぁ-ゖ]/g, (ch) =>
+    String.fromCharCode(ch.charCodeAt(0) + 0x60),
+  );
+}
+
+/** Whether every character is hiragana, katakana, or long-vowel mark(ー) — i.e. a name whose furigana can be derived automatically without a kanji dictionary. */
+export function isKanaOnly(value: string): boolean {
+  return value.length > 0 && /^[ぁ-ゖァ-ヶー]+$/.test(value);
+}

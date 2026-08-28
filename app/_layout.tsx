@@ -58,6 +58,10 @@ export default function RootLayout() {
               name="practice-days"
               options={{ title: "練習日設定" }}
             />
+            <Stack.Screen
+              name="withdrawn-members"
+              options={{ title: "退会メンバー" }}
+            />
           </Stack>
         </SQLiteProvider>
       </Suspense>

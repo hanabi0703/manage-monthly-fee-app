@@ -32,4 +32,6 @@ export const colors = {
   creditText: "#5C8B3E",
   neutralBg: "#EFF7E9",
   neutralText: "#5C8B3E",
+  leaveBg: "#FFF9E7",
+  leaveText: "#B8860B",
 } as const;

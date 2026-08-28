@@ -8,10 +8,11 @@ import {
   listMemberMonthStatusForMonth,
   listPayments,
   listUnpaidVisitorAttendance,
-  upsertMemberByName,
+  upsertMember,
+  type MemberStatus,
 } from "@/lib/db";
 import { computeBalance } from "@/lib/balance";
-import { currentMonthIso, formatYen } from "@/lib/format";
+import { currentMonthIso, formatYen, isKanaOnly, toKatakana } from "@/lib/format";
 import { colors } from "@/lib/theme";
 import { Badge, EmptyState, Screen, ScreenTitle, SectionLabel } from "@/components/ui";
 import { AppCard } from "@/components/AppCard";
@@ -19,7 +20,13 @@ import { AppButton } from "@/components/AppButton";
 import { AppInput } from "@/components/AppInput";
 import { DoodleIcon } from "@/components/DoodleIcon";
 
-type Row = { id: string; name: string; balance: number; hasUnpaidVisitorFee: boolean };
+type Row = {
+  id: string;
+  name: string;
+  status: MemberStatus;
+  balance: number;
+  hasUnpaidVisitorFee: boolean;
+};
 
 export default function MembersScreen() {
   const db = useSQLiteContext();
@@ -27,7 +34,19 @@ export default function MembersScreen() {
   const [rows, setRows] = useState<Row[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [newName, setNewName] = useState("");
+  const [newFurigana, setNewFurigana] = useState("");
   const [adding, setAdding] = useState(false);
+
+  function handleNameChange(value: string) {
+    setNewName(value);
+    // 入力中の名前がひらがな/カタカナのみの間は、その読みをそのまま
+    // カタカナのふりがなとして反映する。IMEで漢字に変換した後は
+    // (=ひらがなのみでなくなった時点で)自動更新を止め、変換前の読みを
+    // ふりがなとして残す。
+    if (isKanaOnly(value)) {
+      setNewFurigana(toKatakana(value));
+    }
+  }
 
   const load = useCallback(() => {
     let cancelled = false;
@@ -63,12 +82,13 @@ export default function MembersScreen() {
         return {
           id: m.id,
           name: m.name,
+          status: m.status,
           balance: effectiveBalance,
           hasUnpaidVisitorFee: unpaidVisitorMemberIds.has(m.id),
         };
       });
       // 未払い(月謝の繰越/未払金がマイナス、またはビジター代の未払いが1回でもある)
-      // のメンバーを優先し、それ以外は元の並び(名前昇順)を保つ。
+      // のメンバーを優先し、それ以外は元の並び(ふりがな昇順、listMembers由来)を保つ。
       const isUnpaid = (r: Row) => r.balance < 0 || r.hasUnpaidVisitorFee;
       const sorted = [...computed].sort(
         (a, b) => Number(!isUnpaid(a)) - Number(!isUnpaid(b)),
@@ -85,11 +105,13 @@ export default function MembersScreen() {
 
   async function handleAddMember() {
     const trimmed = newName.trim();
-    if (!trimmed) return;
+    const trimmedFurigana = newFurigana.trim();
+    if (!trimmed || !trimmedFurigana) return;
     setAdding(true);
     try {
-      await upsertMemberByName(db, trimmed);
+      await upsertMember(db, { name: trimmed, furigana: trimmedFurigana });
       setNewName("");
+      setNewFurigana("");
       load();
     } finally {
       setAdding(false);
@@ -106,14 +128,21 @@ export default function MembersScreen() {
             testID="new-member-name"
             label="名前"
             value={newName}
-            onChangeText={setNewName}
+            onChangeText={handleNameChange}
             placeholder="例：山田太郎"
+          />
+          <AppInput
+            testID="new-member-furigana"
+            label="ふりがな（カタカナ）"
+            value={newFurigana}
+            onChangeText={(t) => setNewFurigana(toKatakana(t))}
+            placeholder="例：ヤマダタロウ"
           />
           <AppButton
             testID="new-member-submit"
             title={adding ? "追加中..." : "追加する"}
             onPress={handleAddMember}
-            disabled={!newName.trim() || adding}
+            disabled={!newName.trim() || !newFurigana.trim() || adding}
           />
         </AppCard>
         {loaded && rows.length === 0 ? (
@@ -132,6 +161,11 @@ export default function MembersScreen() {
                   <View>
                     <View style={styles.nameRow}>
                       <Text style={styles.name}>{item.name}</Text>
+                      {item.status === "ON_LEAVE" ? (
+                        <View testID={`member-leave-badge-${item.id}`}>
+                          <Badge label="休会" tone="leave" />
+                        </View>
+                      ) : null}
                       {item.balance < 0 || item.hasUnpaidVisitorFee ? (
                         <View testID={`member-unpaid-badge-${item.id}`} style={styles.unpaidBadge}>
                           <Text style={styles.unpaidBadgeText}>未払い</Text>

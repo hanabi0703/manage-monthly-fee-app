@@ -6,9 +6,14 @@ export type PaymentType = "MONTHLY" | "VISITOR";
 /** Fixed per-visit fee for VISITOR-type payments. */
 export const VISITOR_FEE = 1000;
 
+export type MemberStatus = "ACTIVE" | "ON_LEAVE" | "WITHDRAWN";
+
 export type Member = {
   id: string;
   name: string;
+  /** カタカナのふりがな。名前入力時に自動設定され、並び替えに使う。 */
+  furigana: string;
+  status: MemberStatus;
   createdAt: string;
 };
 
@@ -159,56 +164,87 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
       new Date().toISOString(),
     );
   }
+
+  // members.furigana / members.status are additions to an already-shipped
+  // table, so CREATE TABLE IF NOT EXISTS above won't add them to existing
+  // installs; add them here if missing.
+  const memberColumns = await db.getAllAsync<{ name: string }>(
+    "PRAGMA table_info(members)",
+  );
+  const memberColumnNames = new Set(memberColumns.map((c) => c.name));
+  if (!memberColumnNames.has("furigana")) {
+    await db.execAsync("ALTER TABLE members ADD COLUMN furigana TEXT NOT NULL DEFAULT ''");
+  }
+  if (!memberColumnNames.has("status")) {
+    await db.execAsync("ALTER TABLE members ADD COLUMN status TEXT NOT NULL DEFAULT 'ACTIVE'");
+  }
 }
 
+type MemberRow = {
+  id: string;
+  name: string;
+  furigana: string;
+  status: MemberStatus;
+  created_at: string;
+};
+
+function toMember(r: MemberRow): Member {
+  return { id: r.id, name: r.name, furigana: r.furigana, status: r.status, createdAt: r.created_at };
+}
+
+/** Active + on-leave(休会) members, sorted by furigana. Withdrawn(退会) members are excluded — see `listWithdrawnMembers`. */
 export async function listMembers(db: SQLiteDatabase): Promise<Member[]> {
-  const rows = await db.getAllAsync<{
-    id: string;
-    name: string;
-    created_at: string;
-  }>("SELECT id, name, created_at FROM members");
+  const rows = await db.getAllAsync<MemberRow>(
+    "SELECT id, name, furigana, status, created_at FROM members WHERE status != 'WITHDRAWN'",
+  );
   // SQLiteのORDER BYはUnicodeコードポイント順(バイナリ比較)のため、
   // ひらがな/カタカナ/漢字が混在すると五十音順にならない。
   // compareNameでロケールを考慮した順序に並べ替える。
-  return rows
-    .map((r) => ({ id: r.id, name: r.name, createdAt: r.created_at }))
-    .sort((a, b) => compareName(a.name, b.name));
+  return rows.map(toMember).sort((a, b) => compareName(a.furigana, b.furigana));
 }
 
-export async function upsertMemberByName(
+/** Withdrawn(退会)members, kept for their payment/attendance history but hidden from all active-member screens. */
+export async function listWithdrawnMembers(db: SQLiteDatabase): Promise<Member[]> {
+  const rows = await db.getAllAsync<MemberRow>(
+    "SELECT id, name, furigana, status, created_at FROM members WHERE status = 'WITHDRAWN'",
+  );
+  return rows.map(toMember).sort((a, b) => compareName(a.furigana, b.furigana));
+}
+
+export async function upsertMember(
   db: SQLiteDatabase,
-  name: string,
+  input: { name: string; furigana: string },
 ): Promise<Member> {
-  const trimmed = name.trim();
-  const existing = await db.getFirstAsync<{
-    id: string;
-    name: string;
-    created_at: string;
-  }>("SELECT id, name, created_at FROM members WHERE name = ?", trimmed);
+  const trimmedName = input.name.trim();
+  const trimmedFurigana = input.furigana.trim();
+  const existing = await db.getFirstAsync<MemberRow>(
+    "SELECT id, name, furigana, status, created_at FROM members WHERE name = ?",
+    trimmedName,
+  );
   if (existing) {
-    return { id: existing.id, name: existing.name, createdAt: existing.created_at };
+    return toMember(existing);
   }
   const id = generateId();
   const createdAt = new Date().toISOString();
   await db.runAsync(
-    "INSERT INTO members (id, name, created_at) VALUES (?, ?, ?)",
+    "INSERT INTO members (id, name, furigana, status, created_at) VALUES (?, ?, ?, 'ACTIVE', ?)",
     id,
-    trimmed,
+    trimmedName,
+    trimmedFurigana,
     createdAt,
   );
-  return { id, name: trimmed, createdAt };
+  return { id, name: trimmedName, furigana: trimmedFurigana, status: "ACTIVE", createdAt };
 }
 
 export async function getMember(
   db: SQLiteDatabase,
   id: string,
 ): Promise<Member | null> {
-  const row = await db.getFirstAsync<{
-    id: string;
-    name: string;
-    created_at: string;
-  }>("SELECT id, name, created_at FROM members WHERE id = ?", id);
-  return row ? { id: row.id, name: row.name, createdAt: row.created_at } : null;
+  const row = await db.getFirstAsync<MemberRow>(
+    "SELECT id, name, furigana, status, created_at FROM members WHERE id = ?",
+    id,
+  );
+  return row ? toMember(row) : null;
 }
 
 export async function deleteMember(db: SQLiteDatabase, id: string): Promise<void> {
@@ -405,12 +441,25 @@ export async function getFeeForMonths(
   return result;
 }
 
-export async function updateMemberName(
+export async function updateMember(
   db: SQLiteDatabase,
   id: string,
-  name: string,
+  input: { name: string; furigana: string },
 ): Promise<void> {
-  await db.runAsync("UPDATE members SET name = ? WHERE id = ?", name.trim(), id);
+  await db.runAsync(
+    "UPDATE members SET name = ?, furigana = ? WHERE id = ?",
+    input.name.trim(),
+    input.furigana.trim(),
+    id,
+  );
+}
+
+export async function updateMemberStatus(
+  db: SQLiteDatabase,
+  id: string,
+  status: MemberStatus,
+): Promise<void> {
+  await db.runAsync("UPDATE members SET status = ? WHERE id = ?", status, id);
 }
 
 /**

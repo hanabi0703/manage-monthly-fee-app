@@ -39,7 +39,7 @@ export function Badge({
   tone,
 }: {
   label: string;
-  tone: "monthly" | "visitor" | "unpaid" | "credit" | "neutral";
+  tone: "monthly" | "visitor" | "unpaid" | "credit" | "neutral" | "leave";
 }) {
   const toneStyles: Record<typeof tone, [string, string]> = {
     monthly: [colors.monthlyBg, colors.monthlyText],
@@ -47,6 +47,7 @@ export function Badge({
     unpaid: [colors.unpaidBg, colors.unpaidText],
     credit: [colors.creditBg, colors.creditText],
     neutral: [colors.neutralBg, colors.neutralText],
+    leave: [colors.leaveBg, colors.leaveText],
   };
   const [bg, fg] = toneStyles[tone];
   return (

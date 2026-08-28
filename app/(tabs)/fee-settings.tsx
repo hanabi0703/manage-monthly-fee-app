@@ -15,7 +15,7 @@ const menuItems: {
   label: string;
   description: string;
   icon: DoodleIconName;
-  href: "/practice-days";
+  href: "/practice-days" | "/withdrawn-members";
 }[] = [
   {
     key: "practice-days",
@@ -23,6 +23,13 @@ const menuItems: {
     description: "月ごとの練習日を登録・削除します。",
     icon: "calendar",
     href: "/practice-days",
+  },
+  {
+    key: "withdrawn-members",
+    label: "退会メンバー",
+    description: "退会したメンバーの確認・復帰を行います。",
+    icon: "members",
+    href: "/withdrawn-members",
   },
 ];
 
