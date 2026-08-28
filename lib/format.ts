@@ -47,3 +47,23 @@ export function shiftMonth(month: string, delta: number): string {
   const newMonth = (total % 12) + 1;
   return `${newYear}-${String(newMonth).padStart(2, "0")}`;
 }
+
+const nameCollator = new Intl.Collator("ja");
+
+/** Katakana (U+30A1-U+30F6) shifted to its matching hiragana codepoint. */
+function toHiragana(value: string): string {
+  return value.replace(/[ァ-ヶ]/g, (ch) =>
+    String.fromCharCode(ch.charCodeAt(0) - 0x60),
+  );
+}
+
+/**
+ * Compares two names for ascending sort order, independent of whether either
+ * is written in hiragana or katakana (both are normalized to hiragana before
+ * comparing) and using Japanese locale collation rather than raw Unicode
+ * codepoint order (plain string/SQL comparison sorts by codepoint, which
+ * does not follow 五十音 reading order).
+ */
+export function compareName(a: string, b: string): number {
+  return nameCollator.compare(toHiragana(a), toHiragana(b));
+}

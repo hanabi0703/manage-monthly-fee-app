@@ -1,4 +1,5 @@
 import type { SQLiteDatabase } from "expo-sqlite";
+import { compareName } from "./format";
 
 export type PaymentType = "MONTHLY" | "VISITOR";
 
@@ -165,8 +166,13 @@ export async function listMembers(db: SQLiteDatabase): Promise<Member[]> {
     id: string;
     name: string;
     created_at: string;
-  }>("SELECT id, name, created_at FROM members ORDER BY name ASC");
-  return rows.map((r) => ({ id: r.id, name: r.name, createdAt: r.created_at }));
+  }>("SELECT id, name, created_at FROM members");
+  // SQLiteのORDER BYはUnicodeコードポイント順(バイナリ比較)のため、
+  // ひらがな/カタカナ/漢字が混在すると五十音順にならない。
+  // compareNameでロケールを考慮した順序に並べ替える。
+  return rows
+    .map((r) => ({ id: r.id, name: r.name, createdAt: r.created_at }))
+    .sort((a, b) => compareName(a.name, b.name));
 }
 
 export async function upsertMemberByName(

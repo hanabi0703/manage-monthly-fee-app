@@ -54,6 +54,7 @@ export default function AttendanceScreen() {
   const [feedback, setFeedback] = useState<string | null>(null);
 
   const didInit = useRef(false);
+  const lastAppliedParamDate = useRef<string | undefined>(undefined);
 
   useFocusEffect(
     useCallback(() => {
@@ -63,11 +64,20 @@ export default function AttendanceScreen() {
         setPracticeDays(days);
         if (!didInit.current) {
           didInit.current = true;
+          lastAppliedParamDate.current = params.date;
           const initial =
             params.date && days.some((d) => d.date === params.date)
               ? params.date
               : pickNearestDate(days, todayIso());
           setDate(initial);
+        } else if (params.date && params.date !== lastAppliedParamDate.current) {
+          // 会計表の日付列をタップして遷移してきた場合、出欠タブが既に
+          // マウント済みでも(=タブ切り替えでは画面が再マウントされないため)
+          // クリックした日付を反映する。
+          lastAppliedParamDate.current = params.date;
+          if (days.some((d) => d.date === params.date)) {
+            setDate(params.date);
+          }
         }
       });
       return () => {
