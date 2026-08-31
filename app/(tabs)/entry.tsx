@@ -10,6 +10,7 @@ import {
   listAttendanceForMember,
   listMembers,
   listMemberMonthStatusForMember,
+  listPaymentsForDate,
   listPaymentsForMember,
   listPracticeDays,
   MonthLockedError,
@@ -60,8 +61,12 @@ export default function EntryScreen() {
   const [currentFee, setCurrentFee] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [paidMemberIdsForDate, setPaidMemberIdsForDate] = useState<Set<string>>(new Set());
 
   const didInit = useRef(false);
+  const scrollRef = useRef<ScrollView>(null);
+  const scrollYRef = useRef(0);
+  const savedScrollYRef = useRef<number | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -149,6 +154,26 @@ export default function EntryScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [db, memberId, practiceDays]);
 
+  // 日付を選んだら、その日付ですでに支払い済みのメンバーはメンバー選択の
+  // 候補から外す(選択中のメンバー自身は表示名が消えないよう常に含める)。
+  // members依存にしているのは、画面フォーカス時(useFocusEffect)に新しい配列が
+  // セットされるため、他画面での支払い登録/取消後に戻ってきた際も最新化されるように。
+  useEffect(() => {
+    if (!date || date.length !== 10) {
+      setPaidMemberIdsForDate(new Set());
+      return;
+    }
+    let cancelled = false;
+    listPaymentsForDate(db, date).then((rows) => {
+      if (cancelled) return;
+      const paid = excludeCancelledPayments(rows);
+      setPaidMemberIdsForDate(new Set(paid.map((p) => p.memberId)));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [db, date, members]);
+
   // 区分(月謝/ビジター)は名前と日付の組み合わせから、会計表と同じ
   // member_month_status(その月の区分設定)を参照して常に取得し直す。
   // 日付ドロップダウンで別の日付(=別の月)を選び直した場合も追従する。
@@ -217,6 +242,24 @@ export default function EntryScreen() {
   const showShortfallOption = !!memberId && type === "MONTHLY";
   const canSubmit =
     memberId.length > 0 && amount.length > 0 && (isShortfallMode || date.length === 10);
+  const visibleMembers =
+    paidMemberIdsForDate.size === 0
+      ? members
+      : members.filter((m) => m.id === memberId || !paidMemberIdsForDate.has(m.id));
+
+  function handleNoteFocus() {
+    savedScrollYRef.current = scrollYRef.current;
+    requestAnimationFrame(() => {
+      scrollRef.current?.scrollToEnd({ animated: true });
+    });
+  }
+
+  function handleNoteBlur() {
+    if (savedScrollYRef.current !== null) {
+      scrollRef.current?.scrollTo({ y: savedScrollYRef.current, animated: true });
+      savedScrollYRef.current = null;
+    }
+  }
 
   async function handleSubmit() {
     const amountNum = Number(amount);
@@ -277,6 +320,11 @@ export default function EntryScreen() {
       setType("MONTHLY");
       setIsShortfallMode(false);
       setNote("");
+      // 支払い済みメンバーの一覧を即座に最新化する(同じ日付を選び直してもすぐ反映されるように)。
+      if (paymentDate) {
+        const rows = await listPaymentsForDate(db, paymentDate);
+        setPaidMemberIdsForDate(new Set(excludeCancelledPayments(rows).map((p) => p.memberId)));
+      }
     } finally {
       setSubmitting(false);
     }
@@ -297,9 +345,14 @@ export default function EntryScreen() {
         keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
       >
         <ScrollView
+          ref={scrollRef}
           contentContainerStyle={styles.wrap}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
+          onScroll={(e) => {
+            scrollYRef.current = e.nativeEvent.contentOffset.y;
+          }}
+          scrollEventThrottle={16}
         >
           <View style={styles.titleBlock}>
             <Text style={styles.title}>支払いを記録</Text>
@@ -313,7 +366,7 @@ export default function EntryScreen() {
               label="メンバーの名前"
               value={memberId}
               onChange={handleMemberChange}
-              members={members}
+              members={visibleMembers}
             />
             <PaymentFields
               date={date}
@@ -331,6 +384,8 @@ export default function EntryScreen() {
               onSelectShortfall={handleSelectShortfall}
               note={note}
               onNoteChange={setNote}
+              onNoteFocus={handleNoteFocus}
+              onNoteBlur={handleNoteBlur}
               testIDs={{
                 date: "entry-date",
                 amount: "entry-amount",

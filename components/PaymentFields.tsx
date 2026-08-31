@@ -21,6 +21,8 @@ type Props = {
   onSelectShortfall?: () => void;
   note: string;
   onNoteChange: (value: string) => void;
+  onNoteFocus?: () => void;
+  onNoteBlur?: () => void;
   testIDs?: {
     date?: string;
     amount?: string;
@@ -47,6 +49,8 @@ export function PaymentFields({
   onSelectShortfall,
   note,
   onNoteChange,
+  onNoteFocus,
+  onNoteBlur,
   testIDs,
 }: Props) {
   return (
@@ -124,6 +128,8 @@ export function PaymentFields({
           testID={testIDs?.note}
           value={note}
           onChangeText={onNoteChange}
+          onFocus={onNoteFocus}
+          onBlur={onNoteBlur}
           placeholder="例：現金でお預かり"
           placeholderTextColor={colors.placeholder}
           style={styles.noteInput}
