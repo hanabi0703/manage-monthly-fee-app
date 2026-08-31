@@ -59,8 +59,10 @@ export default function AttendanceScreen() {
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
-      listPracticeDays(db).then((days) => {
+      listPracticeDays(db).then((rows) => {
         if (cancelled) return;
+        // ドロップダウンは新しい日付が上に来るよう降順にする。
+        const days = [...rows].sort((a, b) => b.date.localeCompare(a.date));
         setPracticeDays(days);
         if (!didInit.current) {
           didInit.current = true;

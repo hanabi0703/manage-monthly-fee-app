@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useFocusEffect } from "expo-router";
-import { Alert, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSQLiteContext } from "expo-sqlite";
 import {
   createPaymentForMember,
@@ -291,63 +291,74 @@ export default function EntryScreen() {
 
   return (
     <Screen>
-      <ScrollView contentContainerStyle={styles.wrap} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-        <View style={styles.titleBlock}>
-          <Text style={styles.title}>支払いを記録</Text>
-          <Text style={styles.priceLine}>
-            現在の月謝額：<Text style={styles.priceValue}>{formatYen(currentFee)}</Text>
-          </Text>
-        </View>
-        <AppCard style={styles.form}>
-          <MemberSelectField
-            testID="entry-member-select"
-            label="メンバーの名前"
-            value={memberId}
-            onChange={handleMemberChange}
-            members={members}
-          />
-          <PaymentFields
-            date={date}
-            onDateChange={setDate}
-            practiceDays={memberId ? selectableDatesForMember : practiceDays}
-            dateEmptyTitle={memberId ? "未払いの練習日はありません" : undefined}
-            dateEmptyHint={memberId ? "このメンバーの支払いはすべて完了しています。" : undefined}
-            amount={amount}
-            amountEditable={isShortfallMode}
-            onAmountChange={setAmount}
-            type={type}
-            showShortfallOption={showShortfallOption}
-            isShortfallMode={isShortfallMode}
-            onSelectFullAmount={handleSelectFullAmount}
-            onSelectShortfall={handleSelectShortfall}
-            note={note}
-            onNoteChange={setNote}
-            testIDs={{
-              date: "entry-date",
-              amount: "entry-amount",
-              typeFull: "entry-type-full",
-              typeShortfall: "entry-type-shortfall",
-              note: "entry-note",
-            }}
-          />
-          <AppButton
-            testID="entry-submit"
-            title={submitting ? "登録中..." : "登録する"}
-            onPress={handleSubmit}
-            disabled={!canSubmit || submitting}
-          />
-          {feedback ? (
-            <Text testID="entry-feedback" style={styles.feedbackText}>
-              {feedback}
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoider}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
+      >
+        <ScrollView
+          contentContainerStyle={styles.wrap}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.titleBlock}>
+            <Text style={styles.title}>支払いを記録</Text>
+            <Text style={styles.priceLine}>
+              現在の月謝額：<Text style={styles.priceValue}>{formatYen(currentFee)}</Text>
             </Text>
-          ) : null}
-        </AppCard>
-      </ScrollView>
+          </View>
+          <AppCard style={styles.form}>
+            <MemberSelectField
+              testID="entry-member-select"
+              label="メンバーの名前"
+              value={memberId}
+              onChange={handleMemberChange}
+              members={members}
+            />
+            <PaymentFields
+              date={date}
+              onDateChange={setDate}
+              practiceDays={memberId ? selectableDatesForMember : practiceDays}
+              dateEmptyTitle={memberId ? "未払いの練習日はありません" : undefined}
+              dateEmptyHint={memberId ? "このメンバーの支払いはすべて完了しています。" : undefined}
+              amount={amount}
+              amountEditable={isShortfallMode}
+              onAmountChange={setAmount}
+              type={type}
+              showShortfallOption={showShortfallOption}
+              isShortfallMode={isShortfallMode}
+              onSelectFullAmount={handleSelectFullAmount}
+              onSelectShortfall={handleSelectShortfall}
+              note={note}
+              onNoteChange={setNote}
+              testIDs={{
+                date: "entry-date",
+                amount: "entry-amount",
+                typeFull: "entry-type-full",
+                typeShortfall: "entry-type-shortfall",
+                note: "entry-note",
+              }}
+            />
+            <AppButton
+              testID="entry-submit"
+              title={submitting ? "登録中..." : "登録する"}
+              onPress={handleSubmit}
+              disabled={!canSubmit || submitting}
+            />
+            {feedback ? (
+              <Text testID="entry-feedback" style={styles.feedbackText}>
+                {feedback}
+              </Text>
+            ) : null}
+          </AppCard>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
+  keyboardAvoider: { flex: 1 },
   wrap: { padding: 20, paddingBottom: 48 },
   titleBlock: { marginBottom: 20, gap: 6 },
   title: { fontSize: 25, fontWeight: "800", color: colors.text },
