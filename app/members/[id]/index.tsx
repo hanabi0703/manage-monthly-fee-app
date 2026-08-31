@@ -218,7 +218,9 @@ export default function MemberDetailScreen() {
               <View style={styles.paymentInfo}>
                 <Text style={styles.paymentDate}>
                   {isCancellation
-                    ? "取消"
+                    ? item.date
+                      ? `取消（参加日: ${formatDate(item.date)}）`
+                      : "取消（不足金支払い）"
                     : item.date
                       ? `参加日: ${formatDate(item.date)}`
                       : "不足金支払い"}
