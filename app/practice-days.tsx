@@ -11,6 +11,7 @@ import {
   removeAttendance,
   type PracticeDay,
 } from "@/lib/db";
+import { excludeCancelledPayments } from "@/lib/balance";
 import { currentMonthIso, formatDate, formatMonthLabel, shiftMonth } from "@/lib/format";
 import { colors } from "@/lib/theme";
 import { EmptyState, Screen, ScreenTitle } from "@/components/ui";
@@ -68,15 +69,17 @@ export default function PracticeDaysScreen() {
   }
 
   async function handleDelete(id: string, date: string) {
-    const [attendanceList, paymentsList] = await Promise.all([
+    const [attendanceList, rawPaymentsList] = await Promise.all([
       listAttendanceForDate(db, date),
       listPaymentsForDate(db, date),
     ]);
+    // 取消済みの支払いはブロック対象に含めない(削除された場合と同じ扱い)。
+    const paymentsList = excludeCancelledPayments(rawPaymentsList);
 
     if (paymentsList.length > 0) {
       Alert.alert(
         "削除できません",
-        `${formatDate(date)}はすでに支払いが記録されているメンバーがいます（${paymentsList.length}件）。先にその支払いを削除してから練習日を削除してください。`,
+        `${formatDate(date)}はすでに支払いが記録されているメンバーがいます（${paymentsList.length}件）。先にその支払いを取消してから練習日を削除してください。`,
       );
       return;
     }

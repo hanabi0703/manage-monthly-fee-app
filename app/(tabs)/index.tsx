@@ -19,6 +19,7 @@ import {
   type PaymentType,
   type PaymentWithMember,
 } from "@/lib/db";
+import { excludeCancelledPayments } from "@/lib/balance";
 import { currentMonthIso, formatMonthLabel, formatShortDate, formatYen, shiftMonth, todayIso } from "@/lib/format";
 import { colors } from "@/lib/theme";
 import { EmptyState, Screen, ScreenTitle } from "@/components/ui";
@@ -68,9 +69,11 @@ export default function DashboardScreen() {
         isMonthApproved(db, month),
       ]).then(([m, allPayments, allAttendance, practiceDays, statusMap, fee, monthApproved]) => {
         if (cancelled) return;
+        // 取消済みの支払いとその取消履歴自体は集計から除外する
+        // (削除された場合と同じ扱いにする)。
         // 不足金支払いは日付が空欄(特定の練習日に紐づかない)なので、
         // 支払った月(createdAt)をその月の集金として扱う。
-        const monthPayments = allPayments.filter(
+        const monthPayments = excludeCancelledPayments(allPayments).filter(
           (p) => (p.date || p.createdAt).slice(0, 7) === month,
         );
         const monthAttendance = allAttendance.filter((a) => a.date.slice(0, 7) === month);

@@ -3,7 +3,7 @@ import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Alert, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSQLiteContext } from "expo-sqlite";
 import {
-  deletePayment,
+  cancelPayment,
   getFeeForMonths,
   getMember,
   listAttendanceForMember,
@@ -15,7 +15,7 @@ import {
   type Payment,
   type PaymentType,
 } from "@/lib/db";
-import { computeBalance } from "@/lib/balance";
+import { computeBalance, excludeCancelledPayments } from "@/lib/balance";
 import { currentMonthIso, formatDate, formatYen } from "@/lib/format";
 import { colors } from "@/lib/theme";
 import { Badge, EmptyState, Screen, SectionLabel } from "@/components/ui";
@@ -48,8 +48,12 @@ export default function MemberDetailScreen() {
       );
       const fees = await getFeeForMonths(db, months);
       if (cancelled) return;
+      // 取消済みの支払いは「支払っていない」扱いにする(削除時と同じ)。
+      const effectiveForUnpaid = excludeCancelledPayments(p);
       const visitorPaidDates = new Set(
-        p.filter((payment) => payment.type === "VISITOR").map((payment) => payment.date),
+        effectiveForUnpaid
+          .filter((payment) => payment.type === "VISITOR")
+          .map((payment) => payment.date),
       );
       const unpaidVisitor = attendanceList
         .filter((a) => (statusMap[a.date.slice(0, 7)] ?? "MONTHLY") === "VISITOR")
@@ -70,12 +74,12 @@ export default function MemberDetailScreen() {
 
   useFocusEffect(load);
 
-  async function handleDelete(paymentId: string) {
+  async function handleCancel(paymentId: string) {
     try {
-      await deletePayment(db, paymentId);
+      await cancelPayment(db, paymentId);
     } catch (err) {
       if (err instanceof MonthLockedError) {
-        Alert.alert("削除できません", "承認済みの月の支払いは削除できません。");
+        Alert.alert("取消できません", "承認済みの月の支払いは取消できません。");
         return;
       }
       throw err;
@@ -83,7 +87,13 @@ export default function MemberDetailScreen() {
     load();
   }
 
-  const monthlyPayments = payments.filter((p) => p.type === "MONTHLY");
+  // 取消済みの支払いとその取消履歴自体は、残高・未払い判定からは除外する
+  // (履歴一覧には両方とも表示したまま、削除された場合と同じ扱いにする)。
+  const effectivePayments = excludeCancelledPayments(payments);
+  const cancelledOriginalIds = new Set(
+    payments.filter((p) => p.cancelsPaymentId).map((p) => p.cancelsPaymentId as string),
+  );
+  const monthlyPayments = effectivePayments.filter((p) => p.type === "MONTHLY");
   const balance = computeBalance(monthlyPayments, (month) => feeByMonth[month] ?? 0);
 
   const currentMonth = currentMonthIso();
@@ -197,18 +207,24 @@ export default function MemberDetailScreen() {
           </View>
         }
         renderItem={({ item }) => {
+          const isCancellation = !!item.cancelsPaymentId;
+          const isCancelled = cancelledOriginalIds.has(item.id);
           const std =
             item.type === "MONTHLY" ? feeByMonth[item.date.slice(0, 7)] ?? null : null;
-          const diff = std === null ? null : item.amount - std;
+          const diff = std === null || isCancellation ? null : item.amount - std;
           const paidDate = item.createdAt.slice(0, 10);
           return (
-            <AppCard style={styles.paymentRow}>
+            <AppCard style={[styles.paymentRow, isCancellation && styles.paymentRowCancelled]}>
               <View style={styles.paymentInfo}>
                 <Text style={styles.paymentDate}>
-                  {item.date ? `参加日: ${formatDate(item.date)}` : "不足金支払い"}
+                  {isCancellation
+                    ? "取消"
+                    : item.date
+                      ? `参加日: ${formatDate(item.date)}`
+                      : "不足金支払い"}
                 </Text>
                 <Text style={styles.paidDate}>
-                  支払日: {formatDate(paidDate)}
+                  {isCancellation ? "取消日" : "支払日"}: {formatDate(paidDate)}
                 </Text>
                 <View style={styles.paymentMeta}>
                   {item.type === "MONTHLY" ? (
@@ -216,7 +232,11 @@ export default function MemberDetailScreen() {
                   ) : (
                     <Badge label="ビジター" tone="visitor" />
                   )}
-                  <Text style={styles.paymentAmount}>{formatYen(item.amount)}</Text>
+                  <Text
+                    style={[styles.paymentAmount, isCancellation && styles.paymentAmountCancelled]}
+                  >
+                    {formatYen(item.amount)}
+                  </Text>
                   {diff !== null && diff !== 0 ? (
                     <Text
                       style={{
@@ -228,23 +248,28 @@ export default function MemberDetailScreen() {
                       {formatYen(diff)}
                     </Text>
                   ) : null}
+                  {isCancelled ? <Badge label="取消済み" tone="neutral" /> : null}
                 </View>
+                {item.note ? <Text style={styles.paymentNote}>{item.note}</Text> : null}
               </View>
-              <Pressable
-                hitSlop={10}
-                onPress={() =>
-                  Alert.alert("削除しますか？", undefined, [
-                    { text: "キャンセル", style: "cancel" },
-                    {
-                      text: "削除",
-                      style: "destructive",
-                      onPress: () => handleDelete(item.id),
-                    },
-                  ])
-                }
-              >
-                <Text style={styles.deleteText}>削除</Text>
-              </Pressable>
+              {!isCancellation && !isCancelled ? (
+                <Pressable
+                  testID={`payment-cancel-${item.id}`}
+                  hitSlop={10}
+                  onPress={() =>
+                    Alert.alert("取消しますか？", "支払い記録は残したまま、取消の履歴が追加されます。", [
+                      { text: "キャンセル", style: "cancel" },
+                      {
+                        text: "取消する",
+                        style: "destructive",
+                        onPress: () => handleCancel(item.id),
+                      },
+                    ])
+                  }
+                >
+                  <Text style={styles.deleteText}>取消する</Text>
+                </Pressable>
+              ) : null}
             </AppCard>
           );
         }}
@@ -284,11 +309,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
   },
+  paymentRowCancelled: { backgroundColor: colors.bg, opacity: 0.8 },
   paymentInfo: { gap: 6 },
   paymentDate: { fontSize: 14, fontWeight: "700", color: colors.text },
   paidDate: { fontSize: 12, color: colors.textMuted },
   paymentMeta: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 2 },
   paymentAmount: { fontSize: 13, color: colors.text },
+  paymentAmountCancelled: { color: colors.unpaidText, fontWeight: "700" },
+  paymentNote: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
   deleteText: { fontSize: 13, color: colors.coral },
   separator: { height: 10 },
 });

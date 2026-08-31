@@ -11,7 +11,7 @@ import {
   upsertMember,
   type MemberStatus,
 } from "@/lib/db";
-import { computeBalance } from "@/lib/balance";
+import { computeBalance, excludeCancelledPayments } from "@/lib/balance";
 import { currentMonthIso, formatYen, isKanaOnly, toKatakana } from "@/lib/format";
 import { colors } from "@/lib/theme";
 import { Badge, EmptyState, Screen, ScreenTitle, SectionLabel } from "@/components/ui";
@@ -56,8 +56,11 @@ export default function MembersScreen() {
       listPayments(db),
       listMemberMonthStatusForMonth(db, currentMonth),
       listUnpaidVisitorAttendance(db),
-    ]).then(async ([members, payments, currentMonthStatus, unpaidVisitorDates]) => {
+    ]).then(async ([members, rawPayments, currentMonthStatus, unpaidVisitorDates]) => {
       if (cancelled) return;
+      // 取消済みの支払いとその取消履歴自体は残高計算から除外する
+      // (削除された場合と同じ扱いにする)。
+      const payments = excludeCancelledPayments(rawPayments);
       const months = Array.from(
         new Set([...payments.map((p) => p.date.slice(0, 7)), currentMonth]),
       );

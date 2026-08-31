@@ -26,6 +26,13 @@ export type Payment = {
   memberId: string;
   amount: number;
   type: PaymentType;
+  /** Free-text note entered when recording the payment. */
+  note: string;
+  /** Set on a 取消(cancellation) record: the id of the payment it cancels
+   * out. Cancelling a payment never deletes it — it adds a new record with
+   * the negated amount instead, so the history keeps both. See
+   * `cancelPayment` and `excludeCancelledPayments`. */
+  cancelsPaymentId: string | null;
   createdAt: string;
 };
 
@@ -178,6 +185,21 @@ export async function migrateDbIfNeeded(db: SQLiteDatabase) {
   if (!memberColumnNames.has("status")) {
     await db.execAsync("ALTER TABLE members ADD COLUMN status TEXT NOT NULL DEFAULT 'ACTIVE'");
   }
+
+  // payments.note / payments.cancels_payment_id are additions to an
+  // already-shipped table; add them here if missing.
+  const paymentColumns = await db.getAllAsync<{ name: string }>(
+    "PRAGMA table_info(payments)",
+  );
+  const paymentColumnNames = new Set(paymentColumns.map((c) => c.name));
+  if (!paymentColumnNames.has("note")) {
+    await db.execAsync("ALTER TABLE payments ADD COLUMN note TEXT NOT NULL DEFAULT ''");
+  }
+  if (!paymentColumnNames.has("cancels_payment_id")) {
+    await db.execAsync(
+      "ALTER TABLE payments ADD COLUMN cancels_payment_id TEXT REFERENCES payments(id)",
+    );
+  }
 }
 
 type MemberRow = {
@@ -251,103 +273,109 @@ export async function deleteMember(db: SQLiteDatabase, id: string): Promise<void
   await db.runAsync("DELETE FROM members WHERE id = ?", id);
 }
 
-export async function listPayments(
-  db: SQLiteDatabase,
-): Promise<PaymentWithMember[]> {
-  const rows = await db.getAllAsync<{
-    id: string;
-    date: string;
-    member_id: string;
-    amount: number;
-    type: PaymentType;
-    created_at: string;
-    member_name: string;
-  }>(
-    `SELECT p.id, p.date, p.member_id, p.amount, p.type, p.created_at, m.name as member_name
-     FROM payments p JOIN members m ON m.id = p.member_id
-     ORDER BY p.date DESC, p.created_at DESC`,
-  );
-  return rows.map((r) => ({
+type PaymentRow = {
+  id: string;
+  date: string;
+  member_id: string;
+  amount: number;
+  type: PaymentType;
+  note: string;
+  cancels_payment_id: string | null;
+  created_at: string;
+};
+
+const PAYMENT_COLUMNS = "id, date, member_id, amount, type, note, cancels_payment_id, created_at";
+
+function toPayment(r: PaymentRow): Payment {
+  return {
     id: r.id,
     date: r.date,
     memberId: r.member_id,
     amount: r.amount,
     type: r.type,
+    note: r.note,
+    cancelsPaymentId: r.cancels_payment_id,
     createdAt: r.created_at,
-    memberName: r.member_name,
-  }));
+  };
+}
+
+export async function listPayments(
+  db: SQLiteDatabase,
+): Promise<PaymentWithMember[]> {
+  const rows = await db.getAllAsync<PaymentRow & { member_name: string }>(
+    `SELECT p.${PAYMENT_COLUMNS.split(", ").join(", p.")}, m.name as member_name
+     FROM payments p JOIN members m ON m.id = p.member_id
+     ORDER BY p.date DESC, p.created_at DESC`,
+  );
+  return rows.map((r) => ({ ...toPayment(r), memberName: r.member_name }));
 }
 
 export async function listPaymentsForMember(
   db: SQLiteDatabase,
   memberId: string,
 ): Promise<Payment[]> {
-  const rows = await db.getAllAsync<{
-    id: string;
-    date: string;
-    member_id: string;
-    amount: number;
-    type: PaymentType;
-    created_at: string;
-  }>(
-    "SELECT id, date, member_id, amount, type, created_at FROM payments WHERE member_id = ? ORDER BY date DESC, created_at DESC",
+  const rows = await db.getAllAsync<PaymentRow>(
+    `SELECT ${PAYMENT_COLUMNS} FROM payments WHERE member_id = ? ORDER BY date DESC, created_at DESC`,
     memberId,
   );
-  return rows.map((r) => ({
-    id: r.id,
-    date: r.date,
-    memberId: r.member_id,
-    amount: r.amount,
-    type: r.type,
-    createdAt: r.created_at,
-  }));
+  return rows.map(toPayment);
 }
 
 export async function listPaymentsForDate(
   db: SQLiteDatabase,
   date: string,
 ): Promise<PaymentWithMember[]> {
-  const rows = await db.getAllAsync<{
-    id: string;
-    date: string;
-    member_id: string;
-    amount: number;
-    type: PaymentType;
-    created_at: string;
-    member_name: string;
-  }>(
-    `SELECT p.id, p.date, p.member_id, p.amount, p.type, p.created_at, m.name as member_name
+  const rows = await db.getAllAsync<PaymentRow & { member_name: string }>(
+    `SELECT p.${PAYMENT_COLUMNS.split(", ").join(", p.")}, m.name as member_name
      FROM payments p JOIN members m ON m.id = p.member_id
      WHERE p.date = ?
      ORDER BY m.name ASC`,
     date,
   );
-  return rows.map((r) => ({
-    id: r.id,
-    date: r.date,
-    memberId: r.member_id,
-    amount: r.amount,
-    type: r.type,
-    createdAt: r.created_at,
-    memberName: r.member_name,
-  }));
+  return rows.map((r) => ({ ...toPayment(r), memberName: r.member_name }));
 }
 
-export async function deletePayment(
+/**
+ * 取消(cancel)s a payment: instead of deleting the record, inserts a new
+ * payment with the negated amount and `cancelsPaymentId` set, so the
+ * original stays visible in history. Balance/unpaid calculations must
+ * exclude cancelled-and-cancelling pairs via `excludeCancelledPayments`
+ * (lib/balance.ts) — the raw rows returned by `listPayments`/
+ * `listPaymentsForMember` still include both.
+ */
+export async function cancelPayment(
   db: SQLiteDatabase,
   id: string,
 ): Promise<void> {
-  const row = await db.getFirstAsync<{ date: string; created_at: string }>(
-    "SELECT date, created_at FROM payments WHERE id = ?",
+  const row = await db.getFirstAsync<PaymentRow>(
+    `SELECT ${PAYMENT_COLUMNS} FROM payments WHERE id = ?`,
     id,
   );
-  if (row) {
-    // 不足金支払い(dateが空欄)は支払った月(created_at)を対象月として扱う
-    // (会計表での集計と同じ基準)。
-    const effectiveMonth = (row.date || row.created_at).slice(0, 7);
-    await assertMonthNotLocked(db, effectiveMonth);
+  if (!row) return;
+  if (row.cancels_payment_id) {
+    throw new Error("Cannot cancel a cancellation record.");
   }
-  await db.runAsync("DELETE FROM payments WHERE id = ?", id);
+  const alreadyCancelled = await db.getFirstAsync<{ id: string }>(
+    "SELECT id FROM payments WHERE cancels_payment_id = ?",
+    id,
+  );
+  if (alreadyCancelled) {
+    throw new Error("This payment has already been cancelled.");
+  }
+  // 不足金支払い(dateが空欄)は支払った月(created_at)を対象月として扱う
+  // (会計表での集計と同じ基準)。
+  const effectiveMonth = (row.date || row.created_at).slice(0, 7);
+  await assertMonthNotLocked(db, effectiveMonth);
+  await db.runAsync(
+    "INSERT INTO payments (id, date, member_id, amount, type, note, cancels_payment_id, created_at) VALUES (?, ?, ?, ?, ?, '', ?, ?)",
+    generateId(),
+    row.date,
+    row.member_id,
+    -row.amount,
+    row.type,
+    id,
+    new Date().toISOString(),
+  );
 }
 
 /** The base (default) monthly fee, used for any month without an exception amount. */
@@ -522,6 +550,7 @@ export async function createPaymentForMember(
     date: string;
     amount: number;
     type: PaymentType;
+    note?: string;
   },
 ): Promise<void> {
   // 不足金支払い(dateが空欄)は支払った月(=今日の月)を対象月として扱う
@@ -529,12 +558,13 @@ export async function createPaymentForMember(
   const effectiveMonth = input.date ? input.date.slice(0, 7) : new Date().toISOString().slice(0, 7);
   await assertMonthNotLocked(db, effectiveMonth);
   await db.runAsync(
-    "INSERT INTO payments (id, date, member_id, amount, type, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+    "INSERT INTO payments (id, date, member_id, amount, type, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
     generateId(),
     input.date,
     input.memberId,
     input.amount,
     input.type,
+    input.note?.trim() ?? "",
     new Date().toISOString(),
   );
 }
@@ -672,6 +702,8 @@ export async function listUnpaidVisitorAttendance(
        ON mms.member_id = a.member_id AND mms.month = substr(a.date, 1, 7)
      LEFT JOIN payments p
        ON p.member_id = a.member_id AND p.date = a.date AND p.type = 'VISITOR'
+          AND p.cancels_payment_id IS NULL
+          AND p.id NOT IN (SELECT cancels_payment_id FROM payments WHERE cancels_payment_id IS NOT NULL)
      WHERE COALESCE(mms.type, 'MONTHLY') = 'VISITOR' AND p.id IS NULL`,
   );
   return rows.map((r) => ({ memberId: r.member_id, date: r.date }));

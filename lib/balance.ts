@@ -21,3 +21,20 @@ export function computeBalance(
     return sum + (p.amount - feeForMonth(p.date.slice(0, 7)));
   }, 0);
 }
+
+/**
+ * Drops cancelled payments and their 取消(cancellation) records from a list,
+ * so balance/unpaid calculations treat a cancelled-and-cancelling pair as if
+ * neither had happened — matching `cancelPayment`, which keeps both rows in
+ * the raw history rather than deleting the original. Use this on any list
+ * feeding `computeBalance` or an unpaid check; use the raw list as returned
+ * by `listPayments`/`listPaymentsForMember` for history display.
+ */
+export function excludeCancelledPayments<T extends { id: string; cancelsPaymentId: string | null }>(
+  payments: T[],
+): T[] {
+  const cancelledIds = new Set(
+    payments.filter((p) => p.cancelsPaymentId).map((p) => p.cancelsPaymentId as string),
+  );
+  return payments.filter((p) => !p.cancelsPaymentId && !cancelledIds.has(p.id));
+}

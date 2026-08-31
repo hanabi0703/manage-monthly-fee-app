@@ -18,7 +18,7 @@ import {
   type PaymentType,
   type PracticeDay,
 } from "@/lib/db";
-import { computeBalance } from "@/lib/balance";
+import { computeBalance, excludeCancelledPayments } from "@/lib/balance";
 import { currentMonthIso, formatDate, formatMonthLabel, formatYen, shiftMonth, todayIso } from "@/lib/format";
 import { colors } from "@/lib/theme";
 import { Screen } from "@/components/ui";
@@ -51,6 +51,7 @@ export default function EntryScreen() {
   const [date, setDate] = useState("");
   const [memberId, setMemberId] = useState("");
   const [amount, setAmount] = useState("");
+  const [note, setNote] = useState("");
   const [type, setType] = useState<PaymentType>("MONTHLY");
   const [isShortfallMode, setIsShortfallMode] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
@@ -95,8 +96,11 @@ export default function EntryScreen() {
       listAttendanceForMember(db, memberId),
       listPaymentsForMember(db, memberId),
       listMemberMonthStatusForMember(db, memberId),
-    ]).then(async ([memberAttendance, memberPayments, statusByMonth]) => {
+    ]).then(async ([memberAttendance, rawMemberPayments, statusByMonth]) => {
       if (cancelled) return;
+      // 取消済みの支払いとその取消履歴自体は、未払い判定からは除外する
+      // (削除された場合と同じ扱いにする)。
+      const memberPayments = excludeCancelledPayments(rawMemberPayments);
       const months = Array.from(
         new Set([
           ...practiceDays.map((d) => d.date.slice(0, 7)),
@@ -194,7 +198,7 @@ export default function EntryScreen() {
     // balanceは実際に記録された支払いの差額しか見ないため、対象月に一切
     // 支払いがない場合は、その月の月謝額を別途差し引いて不足分に含める。
     const month = date ? date.slice(0, 7) : currentMonthIso();
-    const memberPayments = await listPaymentsForMember(db, memberId);
+    const memberPayments = excludeCancelledPayments(await listPaymentsForMember(db, memberId));
     const monthlyPayments = memberPayments.filter((p) => p.type === "MONTHLY");
     const months = Array.from(
       new Set([...monthlyPayments.map((p) => p.date.slice(0, 7)).filter(Boolean), month]),
@@ -228,7 +232,7 @@ export default function EntryScreen() {
     const paymentDate = isShortfallMode ? "" : date;
     setSubmitting(true);
     try {
-      const existing = await listPaymentsForMember(db, memberId);
+      const existing = excludeCancelledPayments(await listPaymentsForMember(db, memberId));
       if (paymentDate && existing.some((p) => p.date === paymentDate)) {
         Alert.alert(
           "支払い済みです",
@@ -250,7 +254,13 @@ export default function EntryScreen() {
         }
       }
       try {
-        await createPaymentForMember(db, { memberId, date: paymentDate, amount: amountNum, type });
+        await createPaymentForMember(db, {
+          memberId,
+          date: paymentDate,
+          amount: amountNum,
+          type,
+          note,
+        });
       } catch (err) {
         if (err instanceof MonthLockedError) {
           Alert.alert(
@@ -266,6 +276,7 @@ export default function EntryScreen() {
       setMemberId("");
       setType("MONTHLY");
       setIsShortfallMode(false);
+      setNote("");
     } finally {
       setSubmitting(false);
     }
@@ -275,6 +286,7 @@ export default function EntryScreen() {
     setMemberId(id);
     setFeedback(null);
     setIsShortfallMode(false);
+    setNote("");
   }
 
   return (
@@ -308,11 +320,14 @@ export default function EntryScreen() {
             isShortfallMode={isShortfallMode}
             onSelectFullAmount={handleSelectFullAmount}
             onSelectShortfall={handleSelectShortfall}
+            note={note}
+            onNoteChange={setNote}
             testIDs={{
               date: "entry-date",
               amount: "entry-amount",
               typeFull: "entry-type-full",
               typeShortfall: "entry-type-shortfall",
+              note: "entry-note",
             }}
           />
           <AppButton

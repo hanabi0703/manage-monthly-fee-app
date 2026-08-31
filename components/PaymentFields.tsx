@@ -19,11 +19,14 @@ type Props = {
   isShortfallMode?: boolean;
   onSelectFullAmount?: () => void;
   onSelectShortfall?: () => void;
+  note: string;
+  onNoteChange: (value: string) => void;
   testIDs?: {
     date?: string;
     amount?: string;
     typeFull?: string;
     typeShortfall?: string;
+    note?: string;
   };
 };
 
@@ -42,6 +45,8 @@ export function PaymentFields({
   isShortfallMode = false,
   onSelectFullAmount,
   onSelectShortfall,
+  note,
+  onNoteChange,
   testIDs,
 }: Props) {
   return (
@@ -113,6 +118,18 @@ export function PaymentFields({
           </View>
         )}
       </View>
+      <View style={styles.field}>
+        <Text style={styles.label}>備考（任意）</Text>
+        <TextInput
+          testID={testIDs?.note}
+          value={note}
+          onChangeText={onNoteChange}
+          placeholder="例：現金でお預かり"
+          placeholderTextColor={colors.placeholder}
+          style={styles.noteInput}
+          multiline
+        />
+      </View>
     </>
   );
 }
@@ -159,4 +176,16 @@ const styles = StyleSheet.create({
   },
   typeText: { color: colors.text, fontSize: 15, fontWeight: "700" },
   typeSelectedText: { color: "#FFFFFF" },
+  noteInput: {
+    minHeight: 54,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+    fontSize: 15,
+    color: colors.text,
+    textAlignVertical: "top",
+  },
 });
