@@ -7,10 +7,15 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "plugins": ["expo-router"],
+    "plugins": [
+      "expo-router"
+    ],
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.hanabi0703.monthlyfeeapp"
+      "bundleIdentifier": "com.hanabi0703.monthlyfeeapp",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -23,6 +28,12 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "e5aa7668-d778-4f88-9653-3b991a4ae2a9"
+      }
     }
   }
 }
