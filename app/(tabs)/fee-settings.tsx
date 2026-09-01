@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { useFocusEffect, useRouter } from "expo-router";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Keyboard, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSQLiteContext } from "expo-sqlite";
 import { getBaseFee, setBaseFee } from "@/lib/db";
 import { colors } from "@/lib/theme";
@@ -57,6 +57,7 @@ export default function SettingsScreen() {
   async function handleSave() {
     const amountNum = Number(baseFee);
     if (!baseFee || !Number.isFinite(amountNum) || amountNum < 0) return;
+    Keyboard.dismiss();
     setSaving(true);
     try {
       await setBaseFee(db, amountNum);

@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { Stack, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { Alert, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Alert, Keyboard, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSQLiteContext } from "expo-sqlite";
 import {
   clearMonthFeeOverride,
@@ -52,6 +52,7 @@ export default function MonthFeeSettingScreen() {
     if (!month || approved) return;
     const amountNum = Number(amount);
     if (!amount || !Number.isFinite(amountNum) || amountNum < 0) return;
+    Keyboard.dismiss();
     setSaving(true);
     try {
       await setMonthFeeOverride(db, month, amountNum);

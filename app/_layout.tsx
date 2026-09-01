@@ -37,7 +37,7 @@ export default function RootLayout() {
               headerStyle: { backgroundColor: colors.card },
               headerTintColor: colors.text,
               headerTitleStyle: { fontWeight: "700", color: colors.text },
-              headerBackTitle: "",
+              headerBackTitle: "戻る",
               contentStyle: { backgroundColor: colors.bg },
             }}
           >
