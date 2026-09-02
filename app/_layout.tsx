@@ -55,6 +55,10 @@ export default function RootLayout() {
               options={{ title: "月謝設定" }}
             />
             <Stack.Screen
+              name="base-fee-settings"
+              options={{ title: "月謝額設定" }}
+            />
+            <Stack.Screen
               name="practice-days"
               options={{ title: "練習日設定" }}
             />

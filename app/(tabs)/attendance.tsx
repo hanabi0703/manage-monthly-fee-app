@@ -15,7 +15,7 @@ import {
   type PaymentType,
   type PracticeDay,
 } from "@/lib/db";
-import { formatDate, formatMonthLabel, todayIso } from "@/lib/format";
+import { formatMonthLabel, todayIso } from "@/lib/format";
 import { colors } from "@/lib/theme";
 import { EmptyState, Screen, ScreenTitle } from "@/components/ui";
 import { AppButton } from "@/components/AppButton";
@@ -51,7 +51,6 @@ export default function AttendanceScreen() {
   const [monthApproved, setMonthApproved] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [feedback, setFeedback] = useState<string | null>(null);
 
   const didInit = useRef(false);
   const lastAppliedParamDate = useRef<string | undefined>(undefined);
@@ -119,7 +118,6 @@ export default function AttendanceScreen() {
 
   function handleDateChange(newDate: string) {
     setDate(newDate);
-    setFeedback(null);
     router.setParams({ date: newDate });
   }
 
@@ -137,7 +135,6 @@ export default function AttendanceScreen() {
   function toggleChecked(memberId: string) {
     if (monthApproved) return;
     setChecked((prev) => ({ ...prev, [memberId]: !(prev[memberId] ?? false) }));
-    setFeedback(null);
   }
 
   async function handleSave() {
@@ -153,7 +150,7 @@ export default function AttendanceScreen() {
         }
       }
       await Promise.all(ops);
-      setFeedback(`✓ ${formatDate(date)}の出欠を保存しました`);
+      router.push("/");
     } catch (err) {
       if (err instanceof MonthLockedError) {
         Alert.alert(
@@ -241,11 +238,6 @@ export default function AttendanceScreen() {
               onPress={handleSave}
               disabled={saving || monthApproved}
             />
-            {feedback ? (
-              <Text testID="attendance-feedback" style={styles.feedbackText}>
-                {feedback}
-              </Text>
-            ) : null}
           </View>
         ) : null}
       </ScrollView>
@@ -287,10 +279,4 @@ const styles = StyleSheet.create({
   statusChipText: { fontSize: 12, fontWeight: "700", color: colors.monthlyText },
   statusChipTextVisitor: { color: colors.visitorText },
   footer: { marginTop: 4, gap: 12 },
-  feedbackText: {
-    textAlign: "center",
-    color: colors.green,
-    fontWeight: "700",
-    fontSize: 14,
-  },
 });
