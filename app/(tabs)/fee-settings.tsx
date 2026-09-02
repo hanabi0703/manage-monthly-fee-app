@@ -1,8 +1,9 @@
 import { useCallback, useState } from "react";
 import { useFocusEffect, useRouter } from "expo-router";
-import { Keyboard, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Keyboard, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSQLiteContext } from "expo-sqlite";
 import { getBaseFee, setBaseFee } from "@/lib/db";
+import { formatYen } from "@/lib/format";
 import { colors } from "@/lib/theme";
 import { Screen, ScreenTitle, SectionLabel } from "@/components/ui";
 import { AppCard } from "@/components/AppCard";
@@ -54,17 +55,29 @@ export default function SettingsScreen() {
 
   useFocusEffect(load);
 
-  async function handleSave() {
+  function handleSave() {
     const amountNum = Number(baseFee);
     if (!baseFee || !Number.isFinite(amountNum) || amountNum < 0) return;
     Keyboard.dismiss();
-    setSaving(true);
-    try {
-      await setBaseFee(db, amountNum);
-      setSavedFee(amountNum);
-    } finally {
-      setSaving(false);
-    }
+    Alert.alert(
+      "月謝額を変更しますか？",
+      `基本の月謝額を${formatYen(amountNum)}に変更します。`,
+      [
+        { text: "キャンセル", style: "cancel" },
+        {
+          text: "変更する",
+          onPress: async () => {
+            setSaving(true);
+            try {
+              await setBaseFee(db, amountNum);
+              setSavedFee(amountNum);
+            } finally {
+              setSaving(false);
+            }
+          },
+        },
+      ],
+    );
   }
 
   return (

@@ -35,7 +35,7 @@ export function DateField({ label, value, onChange, testID }: Props) {
             <DateTimePicker
               value={new Date(`${value}T00:00:00.000Z`)}
               mode="date"
-              display="default"
+              display={Platform.OS === "ios" ? "inline" : "default"}
               timeZoneName="Etc/UTC"
               onChange={(_event, selectedDate) => {
                 setShowPicker(false);

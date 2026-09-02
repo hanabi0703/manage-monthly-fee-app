@@ -48,43 +48,67 @@ export default function MonthFeeSettingScreen() {
 
   useFocusEffect(load);
 
-  async function handleSave() {
+  function handleSave() {
     if (!month || approved) return;
     const amountNum = Number(amount);
     if (!amount || !Number.isFinite(amountNum) || amountNum < 0) return;
     Keyboard.dismiss();
-    setSaving(true);
-    try {
-      await setMonthFeeOverride(db, month, amountNum);
-      load();
-    } catch (err) {
-      if (err instanceof MonthLockedError) {
-        Alert.alert("変更できません", "この月は承認済みのため、月謝を変更できません。");
-        load();
-        return;
-      }
-      throw err;
-    } finally {
-      setSaving(false);
-    }
+    Alert.alert(
+      "この月の月謝額を変更しますか？",
+      `${formatMonthLabel(month)}の月謝額を${formatYen(amountNum)}に変更します。`,
+      [
+        { text: "キャンセル", style: "cancel" },
+        {
+          text: "変更する",
+          onPress: async () => {
+            setSaving(true);
+            try {
+              await setMonthFeeOverride(db, month, amountNum);
+              load();
+            } catch (err) {
+              if (err instanceof MonthLockedError) {
+                Alert.alert("変更できません", "この月は承認済みのため、月謝を変更できません。");
+                load();
+                return;
+              }
+              throw err;
+            } finally {
+              setSaving(false);
+            }
+          },
+        },
+      ],
+    );
   }
 
-  async function handleClear() {
+  function handleClear() {
     if (!month || approved) return;
-    setSaving(true);
-    try {
-      await clearMonthFeeOverride(db, month);
-      load();
-    } catch (err) {
-      if (err instanceof MonthLockedError) {
-        Alert.alert("変更できません", "この月は承認済みのため、月謝を変更できません。");
-        load();
-        return;
-      }
-      throw err;
-    } finally {
-      setSaving(false);
-    }
+    Alert.alert(
+      "基本の月謝額に戻しますか？",
+      `${formatMonthLabel(month)}の月謝額を基本設定（${formatYen(baseFee)}）に戻します。`,
+      [
+        { text: "キャンセル", style: "cancel" },
+        {
+          text: "戻す",
+          onPress: async () => {
+            setSaving(true);
+            try {
+              await clearMonthFeeOverride(db, month);
+              load();
+            } catch (err) {
+              if (err instanceof MonthLockedError) {
+                Alert.alert("変更できません", "この月は承認済みのため、月謝を変更できません。");
+                load();
+                return;
+              }
+              throw err;
+            } finally {
+              setSaving(false);
+            }
+          },
+        },
+      ],
+    );
   }
 
   const effectiveFee = override ?? baseFee;
