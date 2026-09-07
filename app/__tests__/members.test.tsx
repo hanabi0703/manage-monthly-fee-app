@@ -1,4 +1,3 @@
-import React from "react";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react-native";
 import type { SQLiteDatabase } from "expo-sqlite";
 import { __setTestDb } from "@/__mocks__/expo-sqlite";

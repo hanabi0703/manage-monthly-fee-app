@@ -1,4 +1,3 @@
-import React from "react";
 import { Alert } from "react-native";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react-native";
 import type { SQLiteDatabase } from "expo-sqlite";
