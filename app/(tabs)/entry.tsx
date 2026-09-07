@@ -396,7 +396,7 @@ export default function EntryScreen() {
 const styles = StyleSheet.create({
   keyboardAvoider: { flex: 1 },
   wrap: { padding: 20, paddingBottom: 48 },
-  wrapNoteFocused: { paddingBottom: 300 },
+  wrapNoteFocused: { paddingBottom: 150 },
   titleBlock: { marginBottom: 20, gap: 6 },
   title: { fontSize: 25, fontWeight: "800", color: colors.text },
   priceLine: { fontSize: 15, color: colors.textMuted },
